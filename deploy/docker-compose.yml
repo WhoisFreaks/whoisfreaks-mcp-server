@@ -1,61 +1,56 @@
 version: "3.9"
 
-# Full WhoisFreaks stack:
-#   - ip-whois-api    : IP and ASN WHOIS backend (Spring Boot)
-#   - asn-whois-api   : ASN data backend (Spring Boot + Redis)
-#   - redis           : Cache for asn-whois-api
-#   - whoisfreaks-mcp : MCP server (this project)
+# WhoisFreaks MCP Server — Docker Compose
+#
+# The MCP server calls api.whoisfreaks.com directly.
+# No backend services or databases are required.
 #
 # Usage:
-#   cp .env.example .env   # fill in your values
+#   export WHOISFREAKS_API_KEY=your-api-key-here
 #   docker compose up -d
+#
+# With mcp-proxy (exposes the stdio server as HTTP/SSE for remote Claude connections):
+#   docker compose --profile remote up -d
 
 services:
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    networks:
-      - whoisfreaks
-
-  ip-whois-api:
-    image: whoisfreaks/ip-whois-api:latest   # build from your IP-whois-api project
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    networks:
-      - whoisfreaks
-
-  asn-whois-api:
-    image: whoisfreaks/asn-whois-api:latest  # build from your asn-whois-api project
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    environment:
-      SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PORT: 6379
-    depends_on:
-      - redis
-    networks:
-      - whoisfreaks
-
+  # -----------------------------------------------------------------------
+  # Core: the MCP server itself
+  # -----------------------------------------------------------------------
   whoisfreaks-mcp:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+    image: whoisfreaks/mcp-server:1.0.0
+    container_name: whoisfreaks-mcp
     restart: unless-stopped
     environment:
-      WHOISFREAKS_API_KEY: ${WHOISFREAKS_API_KEY}
-      WHOISFREAKS_IP_WHOIS_URL: http://ip-whois-api:8080
-      WHOISFREAKS_ASN_WHOIS_URL: http://asn-whois-api:8081
-    depends_on:
-      - ip-whois-api
-      - asn-whois-api
+      WHOISFREAKS_API_KEY: ${WHOISFREAKS_API_KEY:?Set WHOISFREAKS_API_KEY in environment or .env file}
     stdin_open: true   # keeps the stdio MCP server alive
     tty: false
-    networks:
-      - whoisfreaks
 
-networks:
-  whoisfreaks:
-    driver: bridge
+  # -----------------------------------------------------------------------
+  # Optional: mcp-proxy — exposes stdio over HTTP/SSE for remote access
+  # Enable with:  docker compose --profile remote up -d
+  # Then point Claude Desktop at:  http://your-host:3100/sse
+  # -----------------------------------------------------------------------
+  mcp-proxy:
+    image: node:20-alpine
+    container_name: whoisfreaks-mcp-proxy
+    profiles: [remote]
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      WHOISFREAKS_API_KEY: ${WHOISFREAKS_API_KEY}
+    command: >
+      sh -c "npm install -g @anthropic-ai/mcp-proxy --silent &&
+             mcp-proxy --port 3100 --
+             java -jar /app/app.jar"
+    volumes:
+      - whoisfreaks-jar:/app
+    depends_on:
+      - whoisfreaks-mcp
+
+volumes:
+  whoisfreaks-jar:

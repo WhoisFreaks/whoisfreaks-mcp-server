@@ -3,67 +3,88 @@
 #
 # Usage:
 #   chmod +x deploy/deploy.sh
-#   ./deploy/deploy.sh <user@host> <api-key> [ip-whois-url] [asn-whois-url]
+#   ./deploy/deploy.sh <user@host> <api-key>
 #
-# Example:
-#   ./deploy/deploy.sh ubuntu@192.168.1.10 my-secret-key http://localhost:8080 http://localhost:8081
+# Examples:
+#   ./deploy/deploy.sh ubuntu@192.168.1.10 my-api-key-here
+#   ./deploy/deploy.sh ec2-user@54.23.11.5 my-api-key-here
 
 set -euo pipefail
 
-# ---- Arguments ----
-TARGET="${1:?Usage: $0 <user@host> <api-key> [ip-whois-url] [asn-whois-url]}"
-API_KEY="${2:?API key is required}"
-IP_WHOIS_URL="${3:-http://localhost:8080}"
-ASN_WHOIS_URL="${4:-http://localhost:8081}"
+# ---- Arguments ----------------------------------------------------------------
+TARGET="${1:?Usage: $0 <user@host> <api-key>}"
+API_KEY="${2:?API key is required. Get yours at https://whoisfreaks.com/billing}"
 
 JAR="target/whoisfreaks-mcp-server-1.0.0.jar"
 REMOTE_DIR="/opt/whoisfreaks-mcp"
 SERVICE_FILE="deploy/whoisfreaks-mcp.service"
+ENV_FILE="/etc/whoisfreaks-mcp/env"
 
-echo "==> Building fat JAR..."
+# ---- Build --------------------------------------------------------------------
+echo "==> [1/4] Building fat JAR..."
 mvn clean package -q -DskipTests
 
 if [[ ! -f "$JAR" ]]; then
-  echo "ERROR: JAR not found at $JAR. Build failed."
+  echo "ERROR: JAR not found at $JAR. Build may have failed."
   exit 1
 fi
 
-echo "==> Deploying to $TARGET ..."
+echo "    Built: $JAR ($(du -h "$JAR" | cut -f1))"
 
-# Create remote directory and system user
+# ---- Prepare remote environment -----------------------------------------------
+echo "==> [2/4] Preparing remote VM at $TARGET ..."
 ssh "$TARGET" bash <<REMOTE
   set -e
+
+  # Install Java 17 if not present
+  if ! java -version 2>&1 | grep -q '17\|21'; then
+    echo "    Installing Java 17..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq openjdk-17-jre-headless
+  fi
+
+  # Create deploy directory and system user
   sudo mkdir -p $REMOTE_DIR
-  id -u whoisfreaks &>/dev/null || sudo useradd --system --no-create-home --shell /sbin/nologin whoisfreaks
+  if ! id -u whoisfreaks &>/dev/null; then
+    sudo useradd --system --no-create-home --shell /sbin/nologin whoisfreaks
+  fi
   sudo chown whoisfreaks:whoisfreaks $REMOTE_DIR
 REMOTE
 
-# Copy JAR and systemd unit
-scp "$JAR" "$TARGET:$REMOTE_DIR/whoisfreaks-mcp-server-1.0.0.jar"
-scp "$SERVICE_FILE" "$TARGET:/tmp/whoisfreaks-mcp.service"
+# ---- Copy files ---------------------------------------------------------------
+echo "==> [3/4] Copying JAR and service file..."
+scp -q "$JAR" "$TARGET:$REMOTE_DIR/whoisfreaks-mcp-server-1.0.0.jar"
+scp -q "$SERVICE_FILE" "$TARGET:/tmp/whoisfreaks-mcp.service"
 
-# Configure environment file and install service
+# ---- Configure and start service ----------------------------------------------
+echo "==> [4/4] Installing and starting systemd service..."
 ssh "$TARGET" bash <<REMOTE
   set -e
 
-  # Environment file (holds secrets — chmod 600)
+  # Write the environment file (holds the API key securely)
   sudo mkdir -p /etc/whoisfreaks-mcp
-  sudo tee /etc/whoisfreaks-mcp/env > /dev/null <<ENV
+  sudo tee $ENV_FILE > /dev/null <<ENV
 WHOISFREAKS_API_KEY=$API_KEY
-WHOISFREAKS_IP_WHOIS_URL=$IP_WHOIS_URL
-WHOISFREAKS_ASN_WHOIS_URL=$ASN_WHOIS_URL
 ENV
-  sudo chmod 600 /etc/whoisfreaks-mcp/env
-  sudo chown root:root /etc/whoisfreaks-mcp/env
+  sudo chmod 600 $ENV_FILE
+  sudo chown root:root $ENV_FILE
 
-  # Install and enable the systemd service
+  # Install and start the systemd service
   sudo mv /tmp/whoisfreaks-mcp.service /etc/systemd/system/
   sudo systemctl daemon-reload
   sudo systemctl enable whoisfreaks-mcp
   sudo systemctl restart whoisfreaks-mcp
-  sudo systemctl status whoisfreaks-mcp --no-pager
+
+  # Short wait and status check
+  sleep 2
+  sudo systemctl status whoisfreaks-mcp --no-pager -l
 REMOTE
 
 echo ""
-echo "==> Done. Server is running on $TARGET."
-echo "    Logs: ssh $TARGET 'journalctl -u whoisfreaks-mcp -f'"
+echo "==> Done! WhoisFreaks MCP Server is running on $TARGET"
+echo ""
+echo "    Useful commands:"
+echo "    View logs:    ssh $TARGET 'journalctl -u whoisfreaks-mcp -f'"
+echo "    Stop server:  ssh $TARGET 'sudo systemctl stop whoisfreaks-mcp'"
+echo "    Restart:      ssh $TARGET 'sudo systemctl restart whoisfreaks-mcp'"
+echo "    Update key:   ssh $TARGET 'sudo nano /etc/whoisfreaks-mcp/env && sudo systemctl restart whoisfreaks-mcp'"

@@ -13,19 +13,17 @@ Communicates over **stdio** — your AI client launches it as a subprocess. No H
 3. [Build](#build)
 4. [Platform Integration](#platform-integration)
    - [1. Claude Desktop](#1-claude-desktop)
-   - [2. Claude Code (CLI)](#2-claude-code-cli)
-   - [3. Cursor IDE](#3-cursor-ide)
-   - [4. Windsurf IDE](#4-windsurf-ide)
-   - [5. VS Code + GitHub Copilot](#5-vs-code--github-copilot)
-   - [6. Continue.dev](#6-continuedev)
-   - [7. Zed Editor](#7-zed-editor)
+   - [2. Cursor IDE](#2-cursor-ide)
+   - [3. Windsurf IDE](#3-windsurf-ide)
+   - [4. VS Code + GitHub Copilot](#4-vs-code--github-copilot)
+   - [5. Continue.dev](#5-continuedev)
+   - [6. Zed Editor](#6-zed-editor)
 5. [VM Deployment](#vm-deployment)
    - [Option A — systemd Service](#option-a--systemd-service)
    - [Option B — Docker](#option-b--docker)
    - [Option C — mcp-proxy HTTP Gateway](#option-c--mcp-proxy-http-gateway)
-6. [Local Testing](#local-testing)
-7. [Example Prompts](#example-prompts)
-8. [Troubleshooting](#troubleshooting)
+6[Example Prompts](#example-prompts)
+7[Troubleshooting](#troubleshooting)
 
 ---
 
@@ -141,42 +139,7 @@ The most popular MCP client. Claude Desktop launches the MCP server automaticall
 
 ---
 
-### 2. Claude Code (CLI)
-
-Claude Code is Anthropic's terminal-based coding agent. Add the server with one command:
-
-```bash
-claude mcp add whoisfreaks \
-  --env WHOISFREAKS_API_KEY=your-api-key-here \
-  -- java -jar /absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar
-```
-
-**Verify it was added:**
-```bash
-claude mcp list
-```
-
-**Verify tools are visible:**
-```bash
-claude mcp get whoisfreaks
-```
-
-**Use it in a session:**
-```bash
-claude
-> Look up WHOIS for apple.com
-> Check if mycompany.io is available to register
-> Is 185.220.101.45 a Tor exit node?
-```
-
-**Remove if needed:**
-```bash
-claude mcp remove whoisfreaks
-```
-
----
-
-### 3. Cursor IDE
+### 2. Cursor IDE
 
 Cursor has native MCP support. Add it through Settings or directly via the config file.
 
@@ -215,7 +178,7 @@ Cursor has native MCP support. Add it through Settings or directly via the confi
 
 ---
 
-### 4. Windsurf IDE
+### 3. Windsurf IDE
 
 Windsurf (by Codeium) supports MCP via its Cascade AI sidebar.
 
@@ -253,7 +216,7 @@ Windsurf (by Codeium) supports MCP via its Cascade AI sidebar.
 
 ---
 
-### 5. VS Code + GitHub Copilot
+### 4. VS Code + GitHub Copilot
 
 VS Code supports MCP tools through the GitHub Copilot extension (Chat Participants / Tools feature).
 
@@ -286,7 +249,7 @@ VS Code supports MCP tools through the GitHub Copilot extension (Chat Participan
 
 ---
 
-### 6. Continue.dev
+### 5. Continue.dev
 
 Continue is an open-source AI coding assistant with MCP support for VS Code and JetBrains IDEs.
 
@@ -316,7 +279,7 @@ Continue is an open-source AI coding assistant with MCP support for VS Code and 
 
 ---
 
-### 7. Zed Editor
+### 6. Zed Editor
 
 Zed has a built-in AI assistant with MCP support via its `assistant` configuration.
 
@@ -355,36 +318,68 @@ Use these options when you want the MCP server running on a remote server, acces
 
 Best for long-running production setups on any Linux VM (Ubuntu, Debian, RHEL, etc.).
 
-**1. Copy the JAR to the VM:**
+#### One-command deploy (recommended)
+
+Builds the JAR locally, copies it to the VM, installs Java 17 if needed, and starts the service — all in one step:
+
+```bash
+chmod +x deploy/deploy.sh
+./deploy/deploy.sh ubuntu@your-vm-ip your-api-key-here
+```
+
+The script prints numbered progress and leaves you with useful management commands at the end.
+
+#### Manual deploy (step by step)
+
+**1. Build the JAR locally:**
+```bash
+mvn clean package -q -DskipTests
+```
+
+**2. Create the remote directory and system user (on the VM):**
+```bash
+sudo mkdir -p /opt/whoisfreaks-mcp
+sudo useradd --system --no-create-home --shell /sbin/nologin whoisfreaks
+sudo chown whoisfreaks:whoisfreaks /opt/whoisfreaks-mcp
+```
+
+**3. Copy the JAR to the VM:**
 ```bash
 scp target/whoisfreaks-mcp-server-1.0.0.jar user@your-vm:/opt/whoisfreaks-mcp/
 ```
 
-**2. Create environment file (keeps the API key out of the service file):**
+**4. Create the environment file (keeps the API key out of the service file):**
 ```bash
 sudo mkdir -p /etc/whoisfreaks-mcp
 sudo tee /etc/whoisfreaks-mcp/env > /dev/null <<'EOF'
 WHOISFREAKS_API_KEY=your-api-key-here
 EOF
 sudo chmod 600 /etc/whoisfreaks-mcp/env
+sudo chown root:root /etc/whoisfreaks-mcp/env
 ```
 
-**3. Install and start the systemd service:**
+**5. Install and start the systemd service:**
 ```bash
 sudo cp deploy/whoisfreaks-mcp.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now whoisfreaks-mcp
 ```
 
-**4. Check status and view logs:**
+**6. Check status and view logs:**
 ```bash
 sudo systemctl status whoisfreaks-mcp
 sudo journalctl -u whoisfreaks-mcp -f
 ```
 
-**One-command deploy from your local machine:**
+**Common management commands:**
 ```bash
-./deploy/deploy.sh ubuntu@your-vm-ip your-api-key
+# Update the API key
+sudo nano /etc/whoisfreaks-mcp/env
+sudo systemctl restart whoisfreaks-mcp
+
+# Stop / restart
+sudo systemctl stop whoisfreaks-mcp
+sudo systemctl restart whoisfreaks-mcp
 ```
 
 ---
@@ -395,27 +390,38 @@ Best for containerized environments or cloud VMs with Docker installed.
 
 **Build the image:**
 ```bash
-docker build -f deploy/Dockerfile -t whoisfreaks-mcp-server:1.0.0 .
+docker build -f deploy/Dockerfile -t whoisfreaks/mcp-server:1.0.0 .
 ```
 
-**Run the container:**
+**Run a single container:**
 ```bash
 docker run -d \
   --name whoisfreaks-mcp \
   --restart unless-stopped \
   -e WHOISFREAKS_API_KEY=your-api-key-here \
-  whoisfreaks-mcp-server:1.0.0
+  whoisfreaks/mcp-server:1.0.0
 ```
 
-**Using Docker Compose:**
+**Using Docker Compose (core server only):**
 ```bash
-WHOISFREAKS_API_KEY=your-api-key-here \
+export WHOISFREAKS_API_KEY=your-api-key-here
 docker compose -f deploy/docker-compose.yml up -d
+```
+
+**Using Docker Compose with mcp-proxy (adds HTTP/SSE remote access on port 3100):**
+```bash
+export WHOISFREAKS_API_KEY=your-api-key-here
+docker compose -f deploy/docker-compose.yml --profile remote up -d
 ```
 
 **View logs:**
 ```bash
 docker logs -f whoisfreaks-mcp
+```
+
+**Stop everything:**
+```bash
+docker compose -f deploy/docker-compose.yml down
 ```
 
 ---
@@ -424,7 +430,13 @@ docker logs -f whoisfreaks-mcp
 
 Wraps the stdio server in an HTTP/SSE endpoint so Claude Desktop or any client can connect to it remotely over the network — no JAR needed on the client machine.
 
-**On the VM — install mcp-proxy and start it:**
+**Easiest: use the Docker Compose `remote` profile (includes mcp-proxy automatically):**
+```bash
+export WHOISFREAKS_API_KEY=your-api-key-here
+docker compose -f deploy/docker-compose.yml --profile remote up -d
+```
+
+**Manual: run mcp-proxy directly on the VM:**
 ```bash
 npm install -g @anthropic-ai/mcp-proxy
 
@@ -479,45 +491,6 @@ Then update your Claude Desktop config to:
   }
 }
 ```
-
----
-
-## Local Testing
-
-### MCP Inspector (recommended)
-
-The official interactive test UI — invoke any tool from a browser without needing an AI client.
-
-```bash
-export WHOISFREAKS_API_KEY=your-api-key-here
-npx @modelcontextprotocol/inspector java -jar target/whoisfreaks-mcp-server-1.0.0.jar
-```
-
-Open **http://localhost:5173** — click any of the 14 tools, fill in parameters, and click **Run**.
-
-### Smoke test (no backend required)
-
-Verify the server starts and all tools register correctly:
-
-```bash
-export WHOISFREAKS_API_KEY=test-key
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}
-{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
-| java -jar target/whoisfreaks-mcp-server-1.0.0.jar 2>/dev/null
-```
-
-You'll receive a JSON response listing all 14 tools with their input schemas.
-
-### Validate your API key directly
-
-```bash
-curl -s "https://api.whoisfreaks.com/v1/whois?apiKey=YOUR_KEY&whois=live&domainName=google.com" \
-  | python3 -m json.tool | head -10
-```
-
-- **200 + JSON** → key is valid, proceed with MCP testing
-- **401 / 403** → invalid or inactive key, check at whoisfreaks.com/billing
-- **413** → credits exhausted, add more at whoisfreaks.com/billing
 
 ---
 
@@ -582,9 +555,9 @@ whoisfreaks-mcp-server/
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `WHOISFREAKS_API_KEY` | **Yes** | — | Your API key from the WhoisFreaks billing dashboard |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `WHOISFREAKS_API_KEY` | **Yes** | Your API key from [whoisfreaks.com/billing](https://whoisfreaks.com/billing). All 14 tools call `api.whoisfreaks.com` directly using this key — no other variables are needed. |
 
 ---
 

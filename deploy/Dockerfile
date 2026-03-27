@@ -19,9 +19,8 @@ RUN chown whoisfreaks:whoisfreaks app.jar
 
 USER whoisfreaks
 
-# Environment variables (override at runtime)
+# Only one environment variable is required at runtime.
+# Pass it with: docker run -e WHOISFREAKS_API_KEY=your-key ...
 ENV WHOISFREAKS_API_KEY=""
-ENV WHOISFREAKS_IP_WHOIS_URL="http://ip-whois-api:8080"
-ENV WHOISFREAKS_ASN_WHOIS_URL="http://asn-whois-api:8081"
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
