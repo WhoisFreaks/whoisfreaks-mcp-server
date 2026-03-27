@@ -1,0 +1,29 @@
+[Unit]
+Description=WhoisFreaks MCP Server
+Documentation=https://github.com/whoisfreaks/whoisfreaks-mcp-server
+After=network.target
+
+[Service]
+Type=simple
+User=whoisfreaks
+Group=whoisfreaks
+
+# JAR location — adjust if you installed to a different path
+ExecStart=/usr/bin/java -jar /opt/whoisfreaks-mcp/whoisfreaks-mcp-server-1.0.0.jar
+
+# Load secrets from a separate file (chmod 600, owned by root)
+EnvironmentFile=/etc/whoisfreaks-mcp/env
+
+# Restart automatically on crash
+Restart=on-failure
+RestartSec=5
+
+# Resource limits
+LimitNOFILE=65536
+
+# Redirect stderr to journald (stdout is reserved for MCP stdio protocol)
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
