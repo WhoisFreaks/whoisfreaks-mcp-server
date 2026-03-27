@@ -22,8 +22,8 @@ Communicates over **stdio** — your AI client launches it as a subprocess. No H
    - [Option A — systemd Service](#option-a--systemd-service)
    - [Option B — Docker](#option-b--docker)
    - [Option C — mcp-proxy HTTP Gateway](#option-c--mcp-proxy-http-gateway)
-6[Example Prompts](#example-prompts)
-7[Troubleshooting](#troubleshooting)
+6. [Example Prompts](#example-prompts)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
