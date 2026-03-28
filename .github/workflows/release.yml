@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      should-release: ${{ steps.check.outputs.should-release }}
+    steps:
+      - name: Check commit message for 'new-release'
+        id: check
+        run: |
+          MSG="${{ github.event.head_commit.message }}"
+          if echo "$MSG" | grep -q "new-release"; then
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to create GitHub Releases
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Build JAR
+        run: mvn clean package -q -DskipTests
+
+      - name: Resolve version from pom.xml
+        id: version
+        run: |
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: WhoisFreaks MCP Server v${{ steps.version.outputs.version }}
+          body: |
+            Released from commit: ${{ github.event.head_commit.message }}
+            Commit SHA: ${{ github.sha }}
+          files: target/whoisfreaks-mcp-server-*.jar
+
+      - name: Push Docker image
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          docker build -f deploy/Dockerfile \
+            -t whoisfreaks/mcp-server:${{ steps.version.outputs.version }} \
+            -t whoisfreaks/mcp-server:latest .
+          docker push whoisfreaks/mcp-server:${{ steps.version.outputs.version }}
+          docker push whoisfreaks/mcp-server:latest
