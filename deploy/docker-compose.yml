@@ -1,0 +1,42 @@
+version: "3.9"
+
+# WhoisFreaks MCP Server — HTTP/SSE Gateway
+#
+# Works on macOS, Windows (Docker Desktop + WSL2), and Ubuntu/Linux.
+#
+# ── Recommended (all platforms) ──────────────────────────────────────────────
+# Create a .env file next to this compose file:
+#   echo "WHOISFREAKS_API_KEY=your-api-key-here" > deploy/.env
+# Then start:
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# ── macOS / Ubuntu (inline env var) ──────────────────────────────────────────
+#   export WHOISFREAKS_API_KEY=your-api-key-here
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# ── Windows CMD ───────────────────────────────────────────────────────────────
+#   set WHOISFREAKS_API_KEY=your-api-key-here
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# ── Windows PowerShell ────────────────────────────────────────────────────────
+#   $env:WHOISFREAKS_API_KEY="your-api-key-here"
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# Point your MCP client at:
+#   http://localhost:3100/sse          (local)
+#   http://your-vm-ip:3100/sse        (remote VM)
+#
+# For HTTPS in production, put Nginx in front — see README.
+
+services:
+  whoisfreaks-mcp:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: whoisfreaks/mcp-server:1.0.0
+    container_name: whoisfreaks-mcp
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      WHOISFREAKS_API_KEY: ${WHOISFREAKS_API_KEY:?WHOISFREAKS_API_KEY is not set. Create a deploy/.env file or export the variable — see comments above.}
