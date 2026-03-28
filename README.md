@@ -1,8 +1,8 @@
 # WhoisFreaks MCP Server
 
-A pure-Java **Model Context Protocol (MCP)** server that exposes the full **WhoisFreaks API** suite as AI-callable tools. Works with Claude, Cursor, Windsurf, VS Code, Continue, Zed, and any other MCP-compatible AI client.
+A pure-Java **Model Context Protocol (MCP)** server that exposes the full **WhoisFreaks API** suite as AI-callable tools. Works with Claude Desktop, Cursor, Windsurf, VS Code, Continue, Zed, and any other MCP-compatible AI client.
 
-Communicates over **stdio** — your AI client launches it as a subprocess. No HTTP server, no daemon, no ports to open.
+Run locally via stdio (your AI client launches it as a subprocess) or deploy on a VM using the bundled **mcp-proxy HTTP gateway** — exposing it as an HTTP/SSE endpoint on port 3100 so any client can connect remotely without needing Java installed.
 
 ---
 
@@ -18,12 +18,8 @@ Communicates over **stdio** — your AI client launches it as a subprocess. No H
    - [4. VS Code + GitHub Copilot](#4-vs-code--github-copilot)
    - [5. Continue.dev](#5-continuedev)
    - [6. Zed Editor](#6-zed-editor)
-5. [VM Deployment](#vm-deployment)
-   - [Option A — systemd Service](#option-a--systemd-service)
-   - [Option B — Docker](#option-b--docker)
-   - [Option C — mcp-proxy HTTP Gateway](#option-c--mcp-proxy-http-gateway)
-6. [Example Prompts](#example-prompts)
-7. [Troubleshooting](#troubleshooting)
+5. [Example Prompts](#example-prompts)
+6. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -76,6 +72,8 @@ Communicates over **stdio** — your AI client launches it as a subprocess. No H
 | Java (JDK) | 17 | Check with `java -version` |
 | Maven | 3.8 | Check with `mvn -version` |
 | WhoisFreaks API Key | — | Get yours at [whoisfreaks.com/billing](https://whoisfreaks.com/billing) |
+
+> **For VM deployment only:** Docker and Docker Compose are required on the server. No Java or Maven needed on the VM — the Docker image bundles everything.
 
 ---
 
@@ -137,6 +135,8 @@ The most popular MCP client. Claude Desktop launches the MCP server automaticall
 
 **Verify it works:** Type `Who owns google.com?` and Claude will automatically call `liveWhoisLookup`.
 
+> **Using the VM gateway instead?** Replace the `command`/`args`/`env` block with just `"url": "http://your-vm-ip:3100/sse"` — see [Connect Clients to the Gateway](#connect-clients-to-the-gateway).
+
 ---
 
 ### 2. Cursor IDE
@@ -175,6 +175,8 @@ Cursor has native MCP support. Add it through Settings or directly via the confi
 2. Restart Cursor
 3. Open the **AI Panel** (`Cmd+L`) → you should see a tools indicator showing WhoisFreaks tools
 4. Ask in the chat: `Check the SSL certificate for github.com`
+
+> **Using the VM gateway instead?** Add `"url": "http://your-vm-ip:3100/sse"` and `"transport": "sse"` in place of `command`/`args`/`env`.
 
 ---
 
@@ -310,190 +312,6 @@ Zed has a built-in AI assistant with MCP support via its `assistant` configurati
 
 ---
 
-## VM Deployment
-
-Use these options when you want the MCP server running on a remote server, accessible over the network.
-
-### Option A — systemd Service
-
-Best for long-running production setups on any Linux VM (Ubuntu, Debian, RHEL, etc.).
-
-#### One-command deploy (recommended)
-
-Builds the JAR locally, copies it to the VM, installs Java 17 if needed, and starts the service — all in one step:
-
-```bash
-chmod +x deploy/deploy.sh
-./deploy/deploy.sh ubuntu@your-vm-ip your-api-key-here
-```
-
-The script prints numbered progress and leaves you with useful management commands at the end.
-
-#### Manual deploy (step by step)
-
-**1. Build the JAR locally:**
-```bash
-mvn clean package -q -DskipTests
-```
-
-**2. Create the remote directory and system user (on the VM):**
-```bash
-sudo mkdir -p /opt/whoisfreaks-mcp
-sudo useradd --system --no-create-home --shell /sbin/nologin whoisfreaks
-sudo chown whoisfreaks:whoisfreaks /opt/whoisfreaks-mcp
-```
-
-**3. Copy the JAR to the VM:**
-```bash
-scp target/whoisfreaks-mcp-server-1.0.0.jar user@your-vm:/opt/whoisfreaks-mcp/
-```
-
-**4. Create the environment file (keeps the API key out of the service file):**
-```bash
-sudo mkdir -p /etc/whoisfreaks-mcp
-sudo tee /etc/whoisfreaks-mcp/env > /dev/null <<'EOF'
-WHOISFREAKS_API_KEY=your-api-key-here
-EOF
-sudo chmod 600 /etc/whoisfreaks-mcp/env
-sudo chown root:root /etc/whoisfreaks-mcp/env
-```
-
-**5. Install and start the systemd service:**
-```bash
-sudo cp deploy/whoisfreaks-mcp.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now whoisfreaks-mcp
-```
-
-**6. Check status and view logs:**
-```bash
-sudo systemctl status whoisfreaks-mcp
-sudo journalctl -u whoisfreaks-mcp -f
-```
-
-**Common management commands:**
-```bash
-# Update the API key
-sudo nano /etc/whoisfreaks-mcp/env
-sudo systemctl restart whoisfreaks-mcp
-
-# Stop / restart
-sudo systemctl stop whoisfreaks-mcp
-sudo systemctl restart whoisfreaks-mcp
-```
-
----
-
-### Option B — Docker
-
-Best for containerized environments or cloud VMs with Docker installed.
-
-**Build the image:**
-```bash
-docker build -f deploy/Dockerfile -t whoisfreaks/mcp-server:1.0.0 .
-```
-
-**Run a single container:**
-```bash
-docker run -d \
-  --name whoisfreaks-mcp \
-  --restart unless-stopped \
-  -e WHOISFREAKS_API_KEY=your-api-key-here \
-  whoisfreaks/mcp-server:1.0.0
-```
-
-**Using Docker Compose (core server only):**
-```bash
-export WHOISFREAKS_API_KEY=your-api-key-here
-docker compose -f deploy/docker-compose.yml up -d
-```
-
-**Using Docker Compose with mcp-proxy (adds HTTP/SSE remote access on port 3100):**
-```bash
-export WHOISFREAKS_API_KEY=your-api-key-here
-docker compose -f deploy/docker-compose.yml --profile remote up -d
-```
-
-**View logs:**
-```bash
-docker logs -f whoisfreaks-mcp
-```
-
-**Stop everything:**
-```bash
-docker compose -f deploy/docker-compose.yml down
-```
-
----
-
-### Option C — mcp-proxy HTTP Gateway
-
-Wraps the stdio server in an HTTP/SSE endpoint so Claude Desktop or any client can connect to it remotely over the network — no JAR needed on the client machine.
-
-**Easiest: use the Docker Compose `remote` profile (includes mcp-proxy automatically):**
-```bash
-export WHOISFREAKS_API_KEY=your-api-key-here
-docker compose -f deploy/docker-compose.yml --profile remote up -d
-```
-
-**Manual: run mcp-proxy directly on the VM:**
-```bash
-npm install -g @anthropic-ai/mcp-proxy
-
-WHOISFREAKS_API_KEY=your-api-key-here \
-mcp-proxy --port 3100 -- java -jar /opt/whoisfreaks-mcp/whoisfreaks-mcp-server-1.0.0.jar
-```
-
-**On your local machine — point Claude Desktop at the remote URL:**
-```json
-{
-  "mcpServers": {
-    "whoisfreaks": {
-      "url": "http://your-vm-ip:3100/sse"
-    }
-  }
-}
-```
-
-> **Security tip:** Put Nginx in front with HTTPS and HTTP Basic Auth before exposing port 3100 publicly. Never expose raw MCP over the open internet without authentication.
-
-**Nginx reverse proxy config (recommended):**
-```nginx
-server {
-    listen 443 ssl;
-    server_name mcp.yourdomain.com;
-
-    ssl_certificate     /etc/letsencrypt/live/mcp.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/mcp.yourdomain.com/privkey.pem;
-
-    auth_basic "MCP Server";
-    auth_basic_user_file /etc/nginx/.htpasswd;
-
-    location / {
-        proxy_pass http://127.0.0.1:3100;
-        proxy_set_header Connection '';
-        proxy_http_version 1.1;
-        chunked_transfer_encoding on;
-    }
-}
-```
-
-Then update your Claude Desktop config to:
-```json
-{
-  "mcpServers": {
-    "whoisfreaks": {
-      "url": "https://mcp.yourdomain.com/sse",
-      "headers": {
-        "Authorization": "Basic BASE64_OF_USER_PASS"
-      }
-    }
-  }
-}
-```
-
----
-
 ## Example Prompts
 
 Once configured in any client above, try these prompts:
@@ -528,31 +346,6 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 
 ---
 
-## Project Structure
-
-```
-whoisfreaks-mcp-server/
-├── pom.xml                              # Maven build — Java 17, fat JAR via shade plugin
-├── README.md
-├── deploy/
-│   ├── Dockerfile                       # Multi-stage build (Maven → JRE 17 Alpine)
-│   ├── docker-compose.yml               # Full stack with mcp-proxy sidecar
-│   ├── whoisfreaks-mcp.service          # systemd unit file for Linux VMs
-│   └── deploy.sh                        # One-command remote deploy script
-└── src/main/java/com/whoisfreaks/mcp/
-    ├── WhoisFreaksMcpServer.java         # Entry point — registers all 14 tools
-    ├── WhoisFreaksService.java           # HTTP client for api.whoisfreaks.com
-    └── tools/
-        ├── WhoisTools.java               # liveWhoisLookup, whoisHistory, reverseWhoisLookup
-        ├── IpWhoisTools.java             # ipWhoisLookup, asnWhoisLookup
-        ├── DnsTools.java                 # dnsLookup, dnsHistory, reverseDnsLookup
-        ├── IpTools.java                  # ipGeolocation, ipSecurity
-        ├── DomainTools.java              # domainAvailability, subdomainLookup, domainDiscovery
-        └── SslTools.java                 # sslLookup
-```
-
----
-
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -565,7 +358,7 @@ whoisfreaks-mcp-server/
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| `WHOISFREAKS_API_KEY is not set` | Missing env var | Export `WHOISFREAKS_API_KEY` before running, or add to the `env` block in your client config |
+| `WHOISFREAKS_API_KEY is not set` | Missing env var | Export `WHOISFREAKS_API_KEY` before running, or add it to the `env` block in your client config |
 | `Unauthorized (HTTP 401/403)` | Invalid or inactive API key | Verify the key at whoisfreaks.com/billing |
 | `No data found (HTTP 404)` | Domain/IP/ASN not in database | Double-check the input value is correct |
 | `Rate limit reached (HTTP 429)` | Too many requests | Slow down or upgrade your plan |
@@ -575,6 +368,8 @@ whoisfreaks-mcp-server/
 | `UnsupportedClassVersionError` | Java version too old | Upgrade to Java 17+ (`java -version` to check) |
 | Tools listed but calls fail silently | Config not saved / client not restarted | Save config → fully quit and reopen the client |
 | Cursor shows tools but doesn't call them | Agent mode not enabled | Make sure Cursor is using **Agent** mode, not Chat mode |
+| Gateway returns `connection refused` on port 3100 | Container not running or port not open | Run `docker ps` to check the container, and open port 3100 in your VM firewall |
+| SSE connection drops after a few seconds | Nginx proxy timeout | Add `proxy_read_timeout 3600s;` to your Nginx location block |
 
 ---
 
