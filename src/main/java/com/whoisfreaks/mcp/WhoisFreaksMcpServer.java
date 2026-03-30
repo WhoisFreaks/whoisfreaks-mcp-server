@@ -1,5 +1,6 @@
 package com.whoisfreaks.mcp;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.whoisfreaks.mcp.tools.DnsTools;
 import com.whoisfreaks.mcp.tools.DomainTools;
@@ -53,7 +54,9 @@ public class WhoisFreaksMcpServer {
 
         System.err.println("[whoisfreaks-mcp] Registered " + allTools.size() + " tools.");
 
-        StdioServerTransportProvider transport = new StdioServerTransportProvider(new ObjectMapper());
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        StdioServerTransportProvider transport = new StdioServerTransportProvider(mapper);
 
         McpSyncServer server = McpServer.sync(transport)
                 .serverInfo("whoisfreaks-mcp-server", "2.0.0")
