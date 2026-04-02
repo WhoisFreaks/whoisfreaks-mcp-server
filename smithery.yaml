@@ -57,8 +57,7 @@ startCommand:
         type: string
         title: WhoisFreaks API Key
         description: >
-          Your WhoisFreaks API key. Get one free at https://whoisfreaks.com/signup.
-          Required for all 14 tools.
+          Your WhoisFreaks API key. Get one free at https://whoisfreaks.com/signup
         x-sensitive: true
   commandFunction: |-
     (config) => ({
