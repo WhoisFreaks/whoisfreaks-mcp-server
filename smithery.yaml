@@ -1,0 +1,73 @@
+name: whoisfreaks
+displayName: WhoisFreaks
+description: >
+  14 domain intelligence tools for AI assistants - live WHOIS, WHOIS history,
+  reverse WHOIS, IP WHOIS, ASN WHOIS, DNS lookup, DNS history, reverse DNS,
+  IP geolocation, IP security, SSL certificates, domain availability,
+  subdomain enumeration, and domain discovery. Powered by the WhoisFreaks API.
+
+iconUrl: https://whoisfreaks.com/favicon.ico
+homepage: https://whoisfreaks.com
+repository: https://github.com/WhoisFreaks/whoisfreaks-mcp-server
+license: MIT
+
+categories:
+  - security
+  - networking
+  - domain
+
+tools:
+  - name: liveWhoisLookup
+    description: Real-time WHOIS data for any domain
+  - name: whoisHistory
+    description: Historical WHOIS records and ownership timeline for a domain
+  - name: reverseWhoisLookup
+    description: Find all domains tied to an email, owner name, or organization
+  - name: ipWhoisLookup
+    description: WHOIS registration data for any IPv4 or IPv6 address
+  - name: asnWhoisLookup
+    description: WHOIS data for any Autonomous System Number (ASN)
+  - name: dnsLookup
+    description: Live DNS records — A, AAAA, MX, NS, CNAME, TXT, SOA, SPF
+  - name: dnsHistory
+    description: Historical DNS record changes with full timeline
+  - name: reverseDnsLookup
+    description: Find all domains pointing to a given IP or nameserver
+  - name: ipGeolocation
+    description: Country, city, ISP, and coordinates for any IP address
+  - name: ipSecurity
+    description: Threat intelligence — VPN, proxy, Tor exit node, bot flags
+  - name: sslLookup
+    description: SSL/TLS certificate details — issuer, expiry, SANs, and chain
+  - name: domainAvailability
+    description: Check if a domain is available to register, with suggestions
+  - name: subdomainLookup
+    description: Enumerate all known subdomains for a domain
+  - name: domainDiscovery
+    description: Discover domains by keyword including typosquatting variants
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - apiKey
+    properties:
+      apiKey:
+        type: string
+        title: WhoisFreaks API Key
+        description: >
+          Your WhoisFreaks API key. Get one free at https://whoisfreaks.com/signup.
+          Required for all 14 tools.
+        x-sensitive: true
+  commandFunction: |-
+    (config) => ({
+      command: "docker",
+      args: [
+        "run", "-i", "--rm",
+        "-e", `WHOISFREAKS_API_KEY=${config.apiKey}`,
+        "--entrypoint", "java",
+        "whoisfreaks/mcp-server:latest",
+        "-jar", "app.jar"
+      ]
+    })
