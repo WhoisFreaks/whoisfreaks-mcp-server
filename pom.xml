@@ -6,7 +6,7 @@
 
     <groupId>com.whoisfreaks.mcp</groupId>
     <artifactId>whoisfreaks-mcp-server</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <name>whoisfreaks-mcp-server</name>
     <description>WhoisFreaks MCP Server — Pure Java STDIO, wraps IP-WHOIS and ASN-WHOIS APIs</description>
 
