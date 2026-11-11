@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.3] - 2026-11-11
 
 ### Changed
 - Rewrote all 14 tool descriptions: each says when to use it versus similar tools, what it returns, and no longer repeats the parameter list from the input schema

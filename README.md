@@ -195,11 +195,11 @@ mvn clean package -q
 This produces a single self-contained fat JAR:
 
 ```
-target/whoisfreaks-mcp-server-1.0.2.jar
+target/whoisfreaks-mcp-server-1.0.3.jar
 ```
 
 > **Tip:** Note the **absolute path** to this JAR — you will need it in the platform configs below.
-> Example: `/Users/yourname/whoisfreaks-mcp-server/target/whoisfreaks-mcp-server-1.0.2.jar`
+> Example: `/Users/yourname/whoisfreaks-mcp-server/target/whoisfreaks-mcp-server-1.0.3.jar`
 
 ---
 
@@ -259,7 +259,7 @@ The most popular MCP client. Claude Desktop launches the MCP server as a subproc
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.3.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -330,7 +330,7 @@ Cursor supports both stdio and SSE transports. Config file: `~/.cursor/mcp.json`
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.3.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -385,7 +385,7 @@ Windsurf (by Codeium) supports MCP via its Cascade AI sidebar.
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.3.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -453,7 +453,7 @@ VS Code supports MCP tools through the GitHub Copilot extension (Chat Participan
     "whoisfreaks": {
       "type": "stdio",
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.3.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -524,7 +524,7 @@ Continue is an open-source AI coding assistant with MCP support for VS Code and 
     {
       "name": "whoisfreaks",
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.3.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -577,7 +577,7 @@ Zed has a built-in AI assistant with MCP support via its `assistant` configurati
     "mcp_servers": {
       "whoisfreaks": {
         "command": "java",
-        "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
+        "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.3.jar"],
         "env": {
           "WHOISFREAKS_API_KEY": "your-api-key-here"
         }
