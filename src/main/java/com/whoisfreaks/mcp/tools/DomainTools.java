@@ -65,18 +65,12 @@ public class DomainTools {
                 new McpSchema.Tool(
                         "domainAvailability",
                         """
-                        Check whether a domain name is available for registration using the WhoisFreaks
-                        Domain Availability API. Checks both DNS and WHOIS sources for accurate status.
-                        Optionally returns alternative domain suggestions when the requested domain is taken.
-                        Returns:
-                        - Domain availability status (available/taken/reserved)
-                        - Registration source (DNS-based, WHOIS-based, or both)
-                        - Alternative domain suggestions (when suggestions=true)
-                        Parameters:
-                        - domain (required): Domain to check. Example: mycompany.com
-                        - suggestions (optional): true to get alternative domain suggestions. Default: false
-                        - count (optional): Number of suggestions to return (1–100). Default: 5
-                        - format (optional): json (default) or xml
+                        Check whether a domain name is available to register, using both DNS and WHOIS data.
+                        Use this before suggesting or buying a domain name. Set suggestions=true to also get available alternative
+                        names when the domain is taken; count sets how many (1-100). For details about who owns a registered
+                        domain use liveWhoisLookup. To find existing registered domains containing a keyword use domainDiscovery.
+                        Returns the status (available, taken or reserved) and which source decided it. Availability can change at
+                        any moment, and this check does not reserve the domain.
                         """,
                         schema),
                 (exchange, args) -> {
@@ -132,20 +126,14 @@ public class DomainTools {
                 new McpSchema.Tool(
                         "subdomainLookup",
                         """
-                        Discover all known subdomains for a given domain using the WhoisFreaks Subdomains API.
-                        Useful for:
-                        - Attack surface mapping and security reconnaissance
-                        - Discovering internal services exposed publicly
-                        - Competitive intelligence on domain infrastructure
-                        - Tracking subdomain changes over time
-                        Results can be filtered by active/inactive status and discovery date range.
-                        Parameters:
-                        - domain (required): Root domain to enumerate subdomains for. Example: whoisfreaks.com
-                        - status (optional): 'active' or 'inactive'. Omit for all subdomains.
-                        - after (optional): Only return subdomains discovered after this date (YYYY-MM-DD)
-                        - before (optional): Only return subdomains discovered before this date (YYYY-MM-DD)
-                        - page (optional): Page number for pagination. Default: 1
-                        - format (optional): json (default) or xml
+                        List the known subdomains of a domain (for example api.example.com or mail.example.com) from the WhoisFreaks
+                        subdomain database.
+                        Use this for attack-surface mapping, finding exposed services, or auditing a company's hosts. It looks up
+                        subdomains already discovered by WhoisFreaks rather than scanning the target, so it only knows subdomains
+                        that have been observed. To get a subdomain's DNS records use dnsLookup. To find other domains (not
+                        subdomains) with a similar name use domainDiscovery.
+                        status=active keeps only subdomains that currently resolve; after and before (YYYY-MM-DD) filter by when a
+                        subdomain was discovered. Results are paginated, so large domains may need several pages.
                         """,
                         schema),
                 (exchange, args) -> {
@@ -201,23 +189,14 @@ public class DomainTools {
                 new McpSchema.Tool(
                         "domainDiscovery",
                         """
-                        Search the WhoisFreaks database (888M+ domains) to discover registered domains matching
-                        a keyword or pattern. Powers typo and typosquatting domain discovery.
-                        Use cases:
-                        - Brand protection: Find typosquatted variants of your domain (g00gle.com, googel.com)
-                        - Keyword research: Find all registered domains containing a keyword
-                        - Pattern matching: Discover domains matching a specific naming pattern
-                        - Competitive intelligence: Track competitor domain registrations
-                        Provide keyword OR pattern (not both):
-                        - keyword: finds domains whose label contains this exact string. Example: 'youtube'
-                        - pattern: supports '*' wildcard. Examples: '*goog*', 'g?ogle', '*freaks*'
-                        Parameters:
-                        - keyword (optional): Keyword to find in domain labels. Example: google
-                        - pattern (optional): Wildcard pattern with '*'. Example: *google* | g00gle
-                        - labelLength (optional): Max label length filter (excludes TLD). Example: 8
-                        - page (optional): Page number for pagination. Default: 1
-                        - format (optional): json or xml. Default: json
-                        Note: Provide at least one of 'keyword' or 'pattern'.
+                        Find registered domains whose name contains a keyword or matches a wildcard pattern, across the WhoisFreaks
+                        database of 888M+ domains.
+                        Use this for brand protection (typosquats such as g00gle.com), keyword research, or tracking look-alike
+                        registrations. Provide keyword or pattern. keyword matches domain names containing that exact string;
+                        pattern supports '*' for any characters and '?' for one character, for example *goog* or g?ogle.
+                        labelLength caps the length of the name before the TLD. To find domains by owner rather than by name use
+                        reverseWhoisLookup. To check one specific name use domainAvailability.
+                        Returns matching domain names. Results are paginated: raise page to get more.
                         """,
                         schema),
                 (exchange, args) -> {

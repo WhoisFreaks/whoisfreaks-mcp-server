@@ -55,17 +55,13 @@ public class IpWhoisTools {
                 new McpSchema.Tool(
                         "ipWhoisLookup",
                         """
-                        Retrieve complete WHOIS registration data for any IPv4 or IPv6 address using the
-                        WhoisFreaks IP WHOIS API.
-                        Returns detailed network and registration information including:
-                        - AS number and organization owning the IP
-                        - Network ranges (inetnum / inet6num) and CIDR blocks
-                        - Administrative, technical, and abuse contacts
-                        - Routing data and route objects
-                        - Raw WHOIS and R-WHOIS responses
-                        Parameters:
-                        - ip (required): IPv4 or IPv6 address. Examples: 8.8.8.8 | 2001:4860:4860::8888
-                        - format (optional): json (default) or xml
+                        Get the registry WHOIS record for an IPv4 or IPv6 address: who the IP block is allocated to.
+                        Use this to find the owning organisation, CIDR range, AS number and abuse contact of an IP, for example to
+                        report abuse. For city, ISP and coordinates use ipGeolocation. For VPN, proxy, Tor and threat signals use
+                        ipSecurity. For details about the autonomous system itself use asnWhoisLookup. For domains hosted on the
+                        IP use reverseDnsLookup.
+                        Returns the network range (inetnum/inet6num) and CIDR, owning organisation and ASN, admin, technical and
+                        abuse contacts, route objects, and the raw WHOIS text.
                         """,
                         schema),
                 (exchange, args) -> {
@@ -102,18 +98,12 @@ public class IpWhoisTools {
                 new McpSchema.Tool(
                         "asnWhoisLookup",
                         """
-                        Retrieve complete WHOIS registration data for any Autonomous System Number (ASN)
-                        using the WhoisFreaks ASN WHOIS API.
-                        Returns detailed ASN information including:
-                        - Organization name and description
-                        - Country of registration
-                        - IP prefix/route announcements (IPv4 and IPv6)
-                        - Peering relationships
-                        - Administrative and technical contacts
-                        - AS sets and AS blocks
-                        Parameters:
-                        - asn (required): Autonomous System Number. Examples: AS15169 | AS1009 | 15169
-                        - format (optional): json (default) or xml
+                        Get the registry WHOIS record for an autonomous system (ASN): the network operator behind a set of IP routes.
+                        Use this when you have an AS number (for example from ipWhoisLookup or ipGeolocation output) and need the
+                        operator's name, country, contacts or the IP prefixes it announces. If you only have an IP address, call
+                        ipWhoisLookup first to get its ASN.
+                        Returns the organisation name and description, country of registration, announced IPv4 and IPv6 prefixes,
+                        peering information, admin and technical contacts, and AS sets and blocks.
                         """,
                         schema),
                 (exchange, args) -> {
