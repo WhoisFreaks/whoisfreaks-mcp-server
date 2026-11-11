@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Rewrote all 14 tool descriptions: each says when to use it versus similar tools, what it returns, and no longer repeats the parameter list from the input schema
+- Every tool description ends with a shared note on API key use, credits and error messages
+- Tools now carry MCP titles and annotations (read-only, non-destructive, idempotent, calls an external API)
+
 ## [1.0.2] - 2026-11-11
 
 ### Fixed
