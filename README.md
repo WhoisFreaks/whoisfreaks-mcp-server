@@ -80,7 +80,7 @@ Once running, connect it to any MCP client via **stdio** (local) or **HTTP/SSE o
 
 No Java or Maven required. Pull the pre-built image directly from Docker Hub and run.
 
-**Get your free API key first:** [whoisfreaks.com/signup](https://whoisfreaks.com/signup)
+**Get your free API key first:** [billing.whoisfreaks.com/signup](https://billing.whoisfreaks.com/signup)
 
 ---
 
@@ -182,7 +182,7 @@ Only needed if you want to modify the code or build a custom version.
 |-------------|-----------------|-------|
 | Java (JDK) | 17 | Check with `java -version` |
 | Maven | 3.8 | Check with `mvn -version` |
-| WhoisFreaks API Key | — | Get yours at [whoisfreaks.com/signup](https://whoisfreaks.com/signup) |
+| WhoisFreaks API Key | — | Get yours at [billing.whoisfreaks.com/signup](https://billing.whoisfreaks.com/signup) |
 
 **Clone and build:**
 
@@ -195,11 +195,11 @@ mvn clean package -q
 This produces a single self-contained fat JAR:
 
 ```
-target/whoisfreaks-mcp-server-1.0.0.jar
+target/whoisfreaks-mcp-server-1.0.2.jar
 ```
 
 > **Tip:** Note the **absolute path** to this JAR — you will need it in the platform configs below.
-> Example: `/Users/yourname/whoisfreaks-mcp-server/target/whoisfreaks-mcp-server-1.0.0.jar`
+> Example: `/Users/yourname/whoisfreaks-mcp-server/target/whoisfreaks-mcp-server-1.0.2.jar`
 
 ---
 
@@ -209,7 +209,7 @@ target/whoisfreaks-mcp-server-1.0.0.jar
 |-------------|-------|
 | Docker | Required for the recommended Docker path |
 | Java 17 + Maven 3.8 | Required only if building from source |
-| WhoisFreaks API Key | Free at [whoisfreaks.com/signup](https://whoisfreaks.com/signup) |
+| WhoisFreaks API Key | Free at [billing.whoisfreaks.com/signup](https://billing.whoisfreaks.com/signup) |
 
 ---
 
@@ -259,7 +259,7 @@ The most popular MCP client. Claude Desktop launches the MCP server as a subproc
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -330,7 +330,7 @@ Cursor supports both stdio and SSE transports. Config file: `~/.cursor/mcp.json`
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -385,7 +385,7 @@ Windsurf (by Codeium) supports MCP via its Cascade AI sidebar.
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -453,7 +453,7 @@ VS Code supports MCP tools through the GitHub Copilot extension (Chat Participan
     "whoisfreaks": {
       "type": "stdio",
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -524,7 +524,7 @@ Continue is an open-source AI coding assistant with MCP support for VS Code and 
     {
       "name": "whoisfreaks",
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -577,7 +577,7 @@ Zed has a built-in AI assistant with MCP support via its `assistant` configurati
     "mcp_servers": {
       "whoisfreaks": {
         "command": "java",
-        "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+        "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.2.jar"],
         "env": {
           "WHOISFREAKS_API_KEY": "your-api-key-here"
         }
@@ -634,7 +634,7 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `WHOISFREAKS_API_KEY` | **Yes** | Your API key from [whoisfreaks.com/billing](https://whoisfreaks.com/billing). All 14 tools call `api.whoisfreaks.com` directly using this key — no other variables are needed. |
+| `WHOISFREAKS_API_KEY` | **Yes** | Your API key from [whoisfreaks.com/billing](https://whoisfreaks.com/billing). All 14 tools call `api.whoisfreaks.com` directly using this key — no other variables are needed. Without it the server still starts and lists its tools, but every tool call returns a `WHOISFREAKS_API_KEY is not set` error. |
 
 ---
 
@@ -656,7 +656,7 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 | Problem | Cause | Fix |
 |---------|-------|-----|
 | `Cannot connect to Docker daemon` | Docker Desktop not running | Open Docker Desktop and wait for the engine to start |
-| Container exits immediately | Missing API key or wrong entrypoint | Check logs: `docker logs whoisfreaks-mcp` |
+| Container exits immediately | Wrong entrypoint or command | Check logs: `docker logs whoisfreaks-mcp` |
 | `port 3100 already in use` | Another process on port 3100 | Stop it: `docker rm -f whoisfreaks-mcp` then retry |
 | `no such image` | Image not pulled yet | Run `docker pull whoisfreaks/mcp-server:latest` first |
 | Claude Desktop: tools not appearing with Docker config | Docker not in PATH seen by the app | Use the full Docker path: `/usr/local/bin/docker` as the `command` |

@@ -6,7 +6,7 @@
 
     <groupId>com.whoisfreaks.mcp</groupId>
     <artifactId>whoisfreaks-mcp-server</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
     <name>whoisfreaks-mcp-server</name>
     <description>WhoisFreaks MCP Server — Pure Java STDIO, wraps IP-WHOIS and ASN-WHOIS APIs</description>
 
@@ -73,6 +73,9 @@
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.whoisfreaks.mcp.WhoisFreaksMcpServer</mainClass>
+                                    <manifestEntries>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
+                                    </manifestEntries>
                                 </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
