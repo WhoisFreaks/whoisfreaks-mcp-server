@@ -28,20 +28,25 @@ import java.util.List;
  *   Domain:  domainAvailability, subdomainLookup, domainDiscovery
  *   SSL:     sslLookup
  *
- * Required environment variable:
- *   WHOISFREAKS_API_KEY  — Your WhoisFreaks API key (from billing dashboard)
+ * Environment variable:
+ *   WHOISFREAKS_API_KEY  — Your WhoisFreaks API key (from billing dashboard).
+ *                          Needed to call any tool. Without it the server still
+ *                          starts and lists its tools, but tool calls return an error.
  */
 public class WhoisFreaksMcpServer {
 
     public static void main(String[] args) throws Exception {
+        // Start even without a key, so MCP clients and registries (e.g. Glama)
+        // can still list the tools. Tool calls then return a clear error.
         String apiKey = System.getenv("WHOISFREAKS_API_KEY");
-        if (apiKey == null || apiKey.isBlank()) {
-            System.err.println("[whoisfreaks-mcp] ERROR: WHOISFREAKS_API_KEY environment variable is not set.");
-            System.err.println("[whoisfreaks-mcp] Obtain your key from https://whoisfreaks.com/billing");
-            System.exit(1);
+        boolean hasApiKey = apiKey != null && !apiKey.isBlank();
+        if (!hasApiKey) {
+            System.err.println("[whoisfreaks-mcp] WARNING: WHOISFREAKS_API_KEY environment variable is not set.");
+            System.err.println("[whoisfreaks-mcp] Tools are listed, but every tool call will return an error until the key is set.");
+            System.err.println("[whoisfreaks-mcp] Get a free key at https://billing.whoisfreaks.com/signup");
         }
 
-        WhoisFreaksService service = new WhoisFreaksService(apiKey);
+        WhoisFreaksService service = new WhoisFreaksService(hasApiKey ? apiKey : "");
 
         // Collect all tool specifications from every category
         List<McpServerFeatures.SyncToolSpecification> allTools = new ArrayList<>();
@@ -52,6 +57,10 @@ public class WhoisFreaksMcpServer {
         allTools.addAll(new DomainTools(service).specs());    // domainAvailability, subdomainLookup, domainDiscovery
         allTools.addAll(new SslTools(service).specs());       // sslLookup
 
+        if (!hasApiKey) {
+            allTools = allTools.stream().map(WhoisFreaksMcpServer::requireApiKey).toList();
+        }
+
         System.err.println("[whoisfreaks-mcp] Registered " + allTools.size() + " tools.");
 
         ObjectMapper mapper = new ObjectMapper();
@@ -59,7 +68,7 @@ public class WhoisFreaksMcpServer {
         StdioServerTransportProvider transport = new StdioServerTransportProvider(mapper);
 
         McpSyncServer server = McpServer.sync(transport)
-                .serverInfo("whoisfreaks-mcp-server", "2.0.0")
+                .serverInfo("whoisfreaks-mcp-server", serverVersion())
                 .capabilities(McpSchema.ServerCapabilities.builder()
                         .tools(true)
                         .build())
@@ -81,5 +90,35 @@ public class WhoisFreaksMcpServer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static final String MISSING_API_KEY_MESSAGE =
+            "WHOISFREAKS_API_KEY is not set. Get a free API key at https://billing.whoisfreaks.com/signup, "
+            + "add it as the WHOISFREAKS_API_KEY environment variable in your MCP client config, "
+            + "then restart the server.";
+
+    /**
+     * Keeps the tool's definition (name, description, input schema) so it is
+     * still listed, but makes every call return an error explaining that the
+     * API key is missing instead of calling the WhoisFreaks API.
+     */
+    private static McpServerFeatures.SyncToolSpecification requireApiKey(
+            McpServerFeatures.SyncToolSpecification spec) {
+        return McpServerFeatures.SyncToolSpecification.builder()
+                .tool(spec.tool())
+                .callHandler((exchange, request) -> new McpSchema.CallToolResult(
+                        List.of(new McpSchema.TextContent(MISSING_API_KEY_MESSAGE)), true))
+                .build();
+    }
+
+    /**
+     * Version reported to MCP clients. Read from the jar manifest
+     * (Implementation-Version, set from pom.xml by the shade plugin) so it
+     * always matches the released version. Falls back to "dev" when running
+     * from an IDE or unpackaged classes.
+     */
+    private static String serverVersion() {
+        String version = WhoisFreaksMcpServer.class.getPackage().getImplementationVersion();
+        return (version == null || version.isBlank()) ? "dev" : version;
     }
 }
