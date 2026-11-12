@@ -74,7 +74,7 @@ public class WhoisFreaksHttpServer {
             - an 'Authorization: Bearer <key>' header
             - an 'X-API-Key: <key>' header
             - an '?apiKey=<key>' query parameter on the server URL
-            Get a free key at https://whoisfreaks.com/signup""";
+            Get a free key at https://billing.whoisfreaks.com/signup""";
 
     public static void run(int port) throws Exception {
         HttpServletStatelessServerTransport transport = HttpServletStatelessServerTransport.builder()
@@ -90,7 +90,7 @@ public class WhoisFreaksHttpServer {
                 .toList();
 
         McpStatelessSyncServer mcp = McpServer.sync(transport)
-                .serverInfo(WhoisFreaksMcpServer.SERVER_NAME, WhoisFreaksMcpServer.SERVER_VERSION)
+                .serverInfo(WhoisFreaksMcpServer.SERVER_NAME, WhoisFreaksMcpServer.serverVersion())
                 .capabilities(McpSchema.ServerCapabilities.builder()
                         .tools(true)
                         .build())

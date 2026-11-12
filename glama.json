@@ -1,0 +1,15 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": [ "Usama015", "qasimleoo" ],
+  "license": "MIT",
+  "repository": "https://github.com/WhoisFreaks/whoisfreaks-mcp-server",
+  "homepage": "https://whoisfreaks.com",
+  "categories": ["security", "networking-and-infrastructure", "search"],
+  "tags": ["whois", "domain", "ip", "dns", "threat-intelligence", "mcp"],
+  "version": "2.0.0",
+  "language": "java",
+  "runtime": "java17",
+  "transport": ["stdio", "streamable-http"],
+  "hosting": ["docker", "jar"]
+  
+}

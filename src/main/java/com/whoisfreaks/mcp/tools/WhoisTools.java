@@ -59,16 +59,13 @@ public class WhoisTools {
                 new McpSchema.Tool(
                         "liveWhoisLookup",
                         """
-                        Retrieve real-time WHOIS data for any domain using the WhoisFreaks Live WHOIS API.
-                        Returns complete domain registration information including:
-                        - Registrar and registry details
-                        - Domain creation, update, and expiry dates
-                        - Registrant, admin, and technical contact information
-                        - Name servers
-                        - Domain status flags
-                        Parameters:
-                        - domainName (required): The domain to look up. Example: google.com
-                        - format (optional): json (default) or xml
+                        Get the current WHOIS registration record for a domain, queried live.
+                        Use this to find who owns a domain now, its registrar, creation and expiry dates, name servers or status.
+                        For past owners and changes over time use whoisHistory. To find domains owned by a person, email or company
+                        use reverseWhoisLookup. To check whether an unregistered name can be bought use domainAvailability.
+                        Pass a bare domain (example.com), not a URL.
+                        Returns registrar and registry details, creation/update/expiry dates, registrant, admin and technical
+                        contacts (often privacy-redacted), name servers and domain status flags.
                         """,
                         schema),
                 (context, request) -> {
@@ -106,17 +103,12 @@ public class WhoisTools {
                 new McpSchema.Tool(
                         "whoisHistory",
                         """
-                        Retrieve the complete historical WHOIS ownership timeline for a domain using the
-                        WhoisFreaks WHOIS History API.
-                        Returns deduplicated WHOIS snapshots ordered from most recent to oldest, showing:
-                        - All past registrant/owner changes
-                        - Historical registrar transfers
-                        - Previous contact information
-                        - Past name server changes
-                        - Domain status over time
-                        Parameters:
-                        - domainName (required): Domain to look up history for. Example: whoisfreaks.com
-                        - format (optional): json (default) or xml
+                        Get the historical WHOIS records of a domain: deduplicated snapshots ordered from newest to oldest.
+                        Use this to see previous owners, registrar transfers, past contacts, name server changes, or when a domain
+                        expired and was re-registered. For only the current record use liveWhoisLookup. For DNS changes over time
+                        use dnsHistory.
+                        Returns a list of snapshots, each with the registrar, dates, contacts and name servers recorded at that time.
+                        A domain with no recorded history returns a "no data found" message.
                         """,
                         schema),
                 (context, request) -> {
@@ -178,20 +170,14 @@ public class WhoisTools {
                 new McpSchema.Tool(
                         "reverseWhoisLookup",
                         """
-                        Search the WhoisFreaks WHOIS database using contact information to find all domains
-                        associated with a specific email, person, company, or keyword.
-                        Provide exactly ONE of: email, keyword, owner, or company.
-                        Returns a list of matching domains with optional full WHOIS records.
-                        Parameters:
-                        - email (optional): Registrant email address. Example: admin@example.com
-                        - keyword (optional): Keyword found in WHOIS records. Example: google
-                        - owner (optional): Registrant/owner name. Example: John Doe
-                        - company (optional): Organization name. Example: Alphabet Inc
-                        - mode (optional): 'mini' (domain names only) or 'default' (full records). Default: mini
-                        - exact (optional): true for exact match, false for partial/pattern match. Default: true
-                        - page (optional): Page number for pagination. Default: 1
-                        - format (optional): json or xml. Default: json
-                        Note: Provide exactly one of email, keyword, owner, or company.
+                        Find domains whose WHOIS records contain a given email, registrant name, company or keyword.
+                        Use this to map everything a person or organisation has registered, for example when investigating a
+                        phishing actor or auditing a company's domain portfolio. Provide exactly one of email, owner, company or
+                        keyword. To look up the owner of one known domain use liveWhoisLookup. To find domains by text in the
+                        domain name itself use domainDiscovery.
+                        mode=mini returns domain names only; mode=default returns the full WHOIS record for each domain.
+                        exact=false allows partial matches and returns more, noisier results. Results are paginated: raise page
+                        to get more.
                         """,
                         schema),
                 (context, request) -> {

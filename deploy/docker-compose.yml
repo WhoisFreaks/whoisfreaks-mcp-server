@@ -17,7 +17,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    image: whoisfreaks/mcp-server:2.0.0
+    image: whoisfreaks/mcp-server:latest
     container_name: whoisfreaks-mcp
     restart: unless-stopped
     ports:

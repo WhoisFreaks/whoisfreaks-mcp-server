@@ -61,23 +61,14 @@ public class SslTools {
                 new McpSchema.Tool(
                         "sslLookup",
                         """
-                        Retrieve real-time SSL/TLS certificate information for any domain using the
-                        WhoisFreaks SSL Certificate API.
-                        Returns detailed certificate data including:
-                        - Certificate subject (Common Name, SAN, Organization)
-                        - Issuer information (CA name, organization)
-                        - Validity period (issued date, expiry date)
-                        - Certificate serial number and fingerprints (SHA-1, SHA-256)
-                        - Key algorithm and size (RSA, ECDSA)
-                        - TLS version and cipher suite details
-                        - Optionally: full certificate chain (end-user → intermediate → root CA)
-                        - Optionally: raw OpenSSL output
-                        Parameters:
-                        - domainName (required): Domain to retrieve SSL certificate for. Example: github.com
-                        - chain (optional): true to include full certificate chain. Default: false
-                        - sslRaw (optional): true to include raw OpenSSL response. Default: false
-                        - format (optional): json (default) or xml
-                        Note: Returns HTTP 404 if no SSL certificate exists for the domain.
+                        Get the SSL/TLS certificate a domain currently serves, fetched live.
+                        Use this to check expiry dates, the issuer, covered hostnames (SANs) or key type, or to debug HTTPS errors.
+                        Set chain=true to include intermediate and root certificates when diagnosing trust-chain problems, and
+                        sslRaw=true only when you need the raw OpenSSL output, which is long. For DNS records use dnsLookup; for
+                        domain ownership use liveWhoisLookup.
+                        Returns the subject (common name, SANs, organisation), issuer, validity dates, serial number, SHA-1 and
+                        SHA-256 fingerprints, key algorithm and size, and TLS version and cipher. A domain with no certificate
+                        returns a "no data found" (HTTP 404) message.
                         """,
                         schema),
                 (context, request) -> {

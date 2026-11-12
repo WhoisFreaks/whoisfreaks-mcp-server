@@ -86,7 +86,7 @@ Point any MCP client that supports remote servers at:
 https://mcp.whoisfreaks.com/mcp
 ```
 
-and send your WhoisFreaks API key ([get one free](https://whoisfreaks.com/signup)) in **one** of these ways:
+and send your WhoisFreaks API key ([get one free](https://billing.whoisfreaks.com/signup)) in **one** of these ways:
 
 | Method | Example | Use with |
 |--------|---------|----------|
@@ -146,7 +146,7 @@ Without a key the server still connects and lists its tools, but every tool call
 
 No Java or Maven required. Pull the pre-built image directly from Docker Hub and run.
 
-The container runs the same multi-user HTTP server as the hosted one: it needs **no API key of its own** — clients send theirs with each request (see [Hosted Server](#hosted-server-no-install) for the ways to send it). Get a free key at [whoisfreaks.com/signup](https://whoisfreaks.com/signup).
+The container runs the same multi-user HTTP server as the hosted one: it needs **no API key of its own** — clients send theirs with each request (see [Hosted Server](#hosted-server-no-install) for the ways to send it). Get a free key at [billing.whoisfreaks.com/signup](https://billing.whoisfreaks.com/signup).
 
 ---
 
@@ -269,7 +269,7 @@ Only needed if you want to modify the code or build a custom version.
 |-------------|-----------------|-------|
 | Java (JDK) | 17 | Check with `java -version` |
 | Maven | 3.8 | Check with `mvn -version` |
-| WhoisFreaks API Key | — | Get yours at [whoisfreaks.com/signup](https://whoisfreaks.com/signup) |
+| WhoisFreaks API Key | — | Get yours at [billing.whoisfreaks.com/signup](https://billing.whoisfreaks.com/signup) |
 
 **Clone and build:**
 
@@ -296,7 +296,7 @@ target/whoisfreaks-mcp-server-2.0.0.jar
 |-------------|-------|
 | Docker | Required for the recommended Docker path |
 | Java 17 + Maven 3.8 | Required only if building from source |
-| WhoisFreaks API Key | Free at [whoisfreaks.com/signup](https://whoisfreaks.com/signup) |
+| WhoisFreaks API Key | Free at [billing.whoisfreaks.com/signup](https://billing.whoisfreaks.com/signup) |
 
 ---
 
@@ -722,7 +722,7 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `WHOISFREAKS_API_KEY` | stdio mode only | Your API key from [whoisfreaks.com/billing](https://whoisfreaks.com/billing). Not used in HTTP mode, where each request carries the caller's own key. |
+| `WHOISFREAKS_API_KEY` | stdio mode only | Your API key from [whoisfreaks.com/billing](https://whoisfreaks.com/billing). Without it the server still starts and lists its tools, but every tool call returns a `WHOISFREAKS_API_KEY is not set` error. Not used in HTTP mode, where each request carries the caller's own key. |
 | `MCP_TRANSPORT` | No | `http` to run the hosted HTTP server (same as the `--http` flag). The Docker image runs HTTP mode by default. |
 | `PORT` | No | HTTP port. Default: `3100`. |
 

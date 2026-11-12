@@ -64,21 +64,13 @@ public class DnsTools {
                 new McpSchema.Tool(
                         "dnsLookup",
                         """
-                        Retrieve real-time DNS records for any domain using the WhoisFreaks DNS API.
-                        Supports all major record types:
-                        - A: IPv4 address records
-                        - AAAA: IPv6 address records
-                        - MX: Mail server records
-                        - NS: Name server records
-                        - CNAME: Canonical name (alias) records
-                        - SOA: Start of Authority records
-                        - TXT: Text records (includes SPF, DKIM, DMARC)
-                        - SPF: Sender Policy Framework records
-                        - all: Retrieve all record types at once
-                        Parameters:
-                        - domainName (required): Domain to query. Example: google.com
-                        - type (optional): Record type — A | AAAA | MX | NS | CNAME | SOA | TXT | SPF | all. Default: all
-                        - format (optional): json (default) or xml
+                        Resolve a domain's current DNS records live: A, AAAA, MX, NS, CNAME, SOA, TXT and SPF.
+                        Use this to see where a domain points now: its IP addresses, mail servers, name servers, or TXT records
+                        such as SPF, DKIM and DMARC. For how records changed over time use dnsHistory. To go the other way and
+                        find domains that use a given IP, mail server or name server use reverseDnsLookup.
+                        type=all (the default) returns every record type in one call; pass a single type to keep the result small.
+                        Returns the records grouped by type. A domain with no records of the requested type returns an empty list
+                        or a "no data found" message.
                         """,
                         schema),
                 (context, request) -> {
@@ -125,17 +117,12 @@ public class DnsTools {
                 new McpSchema.Tool(
                         "dnsHistory",
                         """
-                        Retrieve historical DNS records for a domain from the WhoisFreaks DNS history database.
-                        Shows how DNS records have changed over time, useful for:
-                        - Tracking IP address changes for a domain
-                        - Investigating historical mail server configurations
-                        - Researching past name server assignments
-                        - Domain migration analysis
-                        Parameters:
-                        - domainName (required): Domain to query history for. Example: whoisfreaks.com
-                        - type (optional): Record type — A | AAAA | MX | NS | CNAME | SOA | TXT | SPF | all. Default: all
-                        - page (optional): Page number for pagination. Default: 1
-                        - format (optional): json (default) or xml
+                        Get the historical DNS records of a domain, showing how its A, MX, NS and other records changed over time.
+                        Use this for investigations and migrations: earlier hosting IPs (for example the origin IP behind a CDN),
+                        past mail servers, or name server changes. For the current records only use dnsLookup. For ownership
+                        changes use whoisHistory.
+                        Returns past records with the dates they were observed. Results are paginated: raise page to get more,
+                        and filter by type to reduce output.
                         """,
                         schema),
                 (context, request) -> {
@@ -187,21 +174,14 @@ public class DnsTools {
                 new McpSchema.Tool(
                         "reverseDnsLookup",
                         """
-                        Search the WhoisFreaks DNS database by record value to find all domains pointing to
-                        a specific IP address, mail server, or name server.
-                        Common use cases:
-                        - Find all domains hosted on a given IP address (A record reverse lookup)
-                        - Find all domains using a specific mail server (MX record reverse lookup)
-                        - Find all domains using a specific name server (NS record reverse lookup)
-                        - Discover domain infrastructure and hosting patterns
-                        Parameters:
-                        - value (required): The value to search for.
-                          Examples: 8.8.8.8 (for A records) | mail.google.com (for MX) | ns1.example.com (for NS)
-                          Use '*' as wildcard when exact=false. Example: *.cloudflare.com
-                        - type (optional): Record type to search — A | AAAA | MX | NS | CNAME | SOA | TXT. Default: A
-                        - exact (optional): true for exact match (default), false for wildcard/pattern matching
-                        - page (optional): Page number for pagination. Default: 1
-                        - format (optional): json (default) or xml
+                        Find domains whose DNS records point to a given value: an IP address, mail server, name server or other
+                        record value.
+                        Use this to see which other sites share a hosting IP, which domains use a mail server or name server, or to
+                        map infrastructure during an investigation. Set type to match the value: A for an IPv4 address (default),
+                        AAAA for IPv6, MX for a mail server, NS for a name server. For a domain's own records use dnsLookup. For
+                        the registered owner of an IP block use ipWhoisLookup.
+                        exact=false enables '*' wildcard matching, for example *.cloudflare.com. Popular IPs and name servers can
+                        match millions of domains; results are paginated, so use page and stop once you have enough.
                         """,
                         schema),
                 (context, request) -> {

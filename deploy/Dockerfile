@@ -10,7 +10,7 @@
 #
 # Build & push multi-arch image to Docker Hub:
 #   docker buildx build --platform linux/amd64,linux/arm64 \
-#     -f deploy/Dockerfile -t whoisfreaks/mcp-server:2.0.0 --push .
+#     -f deploy/Dockerfile -t whoisfreaks/mcp-server:<version> --push .
 
 # ---- Build stage ----
 # --platform=$BUILDPLATFORM ensures Maven always compiles on the native host
@@ -21,7 +21,8 @@ COPY pom.xml .
 # Download dependencies first (cached layer — speeds up rebuilds)
 RUN mvn dependency:go-offline -q
 COPY src/ src/
-RUN mvn clean package -q -DskipTests
+RUN mvn clean package -q -DskipTests && \
+    cp target/whoisfreaks-mcp-server-*.jar target/app.jar
 
 # ---- Runtime stage ----
 # eclipse-temurin:17-jre-jammy (Ubuntu 22.04 LTS) ships both linux/amd64 and
@@ -35,7 +36,7 @@ RUN groupadd --system whoisfreaks && \
     useradd --system --no-create-home --shell /usr/sbin/nologin --gid whoisfreaks whoisfreaks
 
 # Copy the fat JAR produced by the build stage
-COPY --from=build /app/target/whoisfreaks-mcp-server-2.0.0.jar app.jar
+COPY --from=build /app/target/app.jar app.jar
 RUN chown whoisfreaks:whoisfreaks app.jar
 
 USER whoisfreaks

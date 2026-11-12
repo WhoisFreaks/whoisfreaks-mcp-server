@@ -52,18 +52,13 @@ public class IpTools {
                 new McpSchema.Tool(
                         "ipGeolocation",
                         """
-                        Retrieve geolocation and network information for any IPv4 or IPv6 address using the
-                        WhoisFreaks IP Geolocation API.
-                        Returns enriched location and network data including:
-                        - Country, region, city, and postal code
-                        - Latitude and longitude coordinates
-                        - Timezone information
-                        - ISP and organization name
-                        - AS number and network details
-                        - Connection type (broadband, mobile, satellite, etc.)
-                        Parameters:
-                        - ip (required): IPv4 or IPv6 address. Examples: 8.8.8.8 | 2606:4700:4700::1111
-                        Note: Returns HTTP 423 for bogon/non-routable IP ranges (10.x.x.x, 192.168.x.x, etc.)
+                        Look up where an IPv4 or IPv6 address is located and which network it belongs to.
+                        Use this for country, region, city, coordinates, timezone, ISP, ASN and connection type, for example to
+                        localise a visitor or see where a server is hosted. The location is an estimate and is most reliable at
+                        country level. For VPN, proxy, Tor and threat signals use ipSecurity. For the registered owner of the IP
+                        block and its abuse contact use ipWhoisLookup.
+                        Private and reserved addresses (10.x, 192.168.x, 127.x and similar) cannot be geolocated and return a
+                        "non-routable IP" (HTTP 423) message.
                         """,
                         schema),
                 (context, request) -> {
@@ -96,20 +91,13 @@ public class IpTools {
                 new McpSchema.Tool(
                         "ipSecurity",
                         """
-                        Retrieve detailed threat intelligence and security risk data for any IPv4 or IPv6
-                        address using the WhoisFreaks IP Security API.
-                        Returns comprehensive security signals including:
-                        - VPN detection (commercial VPN services)
-                        - Proxy detection (residential proxies, SOCKS, HTTP proxies)
-                        - Tor exit node detection
-                        - Bot and spam activity flags
-                        - Cloud provider identification (AWS, GCP, Azure, etc.)
-                        - Geolocation and network metadata
-                        - Threat score and risk classification
-                        Useful for fraud detection, access control, and threat analysis.
-                        Parameters:
-                        - ip (required): IPv4 or IPv6 address to analyze.
-                          Examples: 1.1.1.1 | 185.220.101.0 (Tor exit node)
+                        Check an IPv4 or IPv6 address for risk signals: VPN, proxy, Tor exit node, bot or spam activity, and whether
+                        it belongs to a cloud or hosting provider.
+                        Use this for fraud checks, sign-up or login screening, or triaging a suspicious IP from logs. For location
+                        and ISP only use ipGeolocation. For the registered owner and abuse contact use ipWhoisLookup.
+                        Returns a flag for each signal, the provider name where known, geolocation and network metadata, and an
+                        overall threat score and risk classification. A clean result means no signals were found, not that the IP
+                        is guaranteed safe.
                         """,
                         schema),
                 (context, request) -> {
