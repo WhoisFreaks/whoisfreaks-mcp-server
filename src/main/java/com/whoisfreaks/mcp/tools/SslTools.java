@@ -1,11 +1,13 @@
 package com.whoisfreaks.mcp.tools;
 
 import com.whoisfreaks.mcp.WhoisFreaksService;
-import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * MCP tools for WhoisFreaks SSL Certificate API.
@@ -15,13 +17,13 @@ import java.util.Map;
  */
 public class SslTools {
 
-    private final WhoisFreaksService service;
+    private final Function<McpTransportContext, WhoisFreaksService> services;
 
-    public SslTools(WhoisFreaksService service) {
-        this.service = service;
+    public SslTools(Function<McpTransportContext, WhoisFreaksService> services) {
+        this.services = services;
     }
 
-    public List<McpServerFeatures.SyncToolSpecification> specs() {
+    public List<McpStatelessServerFeatures.SyncToolSpecification> specs() {
         return List.of(sslLookupSpec());
     }
 
@@ -29,7 +31,7 @@ public class SslTools {
     // sslLookup
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification sslLookupSpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification sslLookupSpec() {
         String schema = """
                 {
                   "type": "object",
@@ -55,7 +57,7 @@ public class SslTools {
                   "required": ["domainName"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "sslLookup",
                         """
@@ -78,12 +80,13 @@ public class SslTools {
                         Note: Returns HTTP 404 if no SSL certificate exists for the domain.
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String domain = str(args, "domainName");
                     if (domain == null) return result("Error: 'domainName' is required.");
                     Boolean chain  = args.get("chain") instanceof Boolean b ? b : null;
                     Boolean sslRaw = args.get("sslRaw") instanceof Boolean b ? b : null;
-                    return result(service.sslLookup(domain, chain, sslRaw, str(args, "format")));
+                    return result(services.apply(context).sslLookup(domain, chain, sslRaw, str(args, "format")));
                 }
         );
     }

@@ -21,16 +21,16 @@ public class WhoisFreaksService {
 
     private static final String BASE = "https://api.whoisfreaks.com";
 
+    // Shared across instances: in HTTP mode a lightweight service is created per request (one per user API key).
+    private static final HttpClient http = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
+    private static final ObjectMapper mapper = new ObjectMapper();
+
     private final String apiKey;
-    private final HttpClient http;
-    private final ObjectMapper mapper;
 
     public WhoisFreaksService(String apiKey) {
         this.apiKey = apiKey;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
-                .build();
-        this.mapper = new ObjectMapper();
     }
 
     // =========================================================================
@@ -268,7 +268,7 @@ public class WhoisFreaksService {
 
     private String formatResponse(String title, int status, String body) {
         if (status == 401 || status == 403) {
-            return title + "\n\nUnauthorized (HTTP " + status + "). Check your WHOISFREAKS_API_KEY and subscription status.";
+            return title + "\n\nUnauthorized (HTTP " + status + "). Check your WhoisFreaks API key and subscription status.";
         }
         if (status == 404) {
             return title + "\n\nNo data found (HTTP 404). The requested resource does not exist in the database.";

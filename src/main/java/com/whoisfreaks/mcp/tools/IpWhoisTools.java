@@ -1,11 +1,13 @@
 package com.whoisfreaks.mcp.tools;
 
 import com.whoisfreaks.mcp.WhoisFreaksService;
-import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * MCP tools for WhoisFreaks IP WHOIS and ASN WHOIS APIs.
@@ -16,13 +18,13 @@ import java.util.Map;
  */
 public class IpWhoisTools {
 
-    private final WhoisFreaksService service;
+    private final Function<McpTransportContext, WhoisFreaksService> services;
 
-    public IpWhoisTools(WhoisFreaksService service) {
-        this.service = service;
+    public IpWhoisTools(Function<McpTransportContext, WhoisFreaksService> services) {
+        this.services = services;
     }
 
-    public List<McpServerFeatures.SyncToolSpecification> specs() {
+    public List<McpStatelessServerFeatures.SyncToolSpecification> specs() {
         return List.of(
                 ipWhoisSpec(),
                 asnWhoisSpec()
@@ -33,7 +35,7 @@ public class IpWhoisTools {
     // ipWhoisLookup
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification ipWhoisSpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification ipWhoisSpec() {
         String schema = """
                 {
                   "type": "object",
@@ -51,7 +53,7 @@ public class IpWhoisTools {
                   "required": ["ip"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "ipWhoisLookup",
                         """
@@ -68,10 +70,11 @@ public class IpWhoisTools {
                         - format (optional): json (default) or xml
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String ip = str(args, "ip");
                     if (ip == null) return result("Error: 'ip' is required.");
-                    return result(service.ipWhois(ip, str(args, "format")));
+                    return result(services.apply(context).ipWhois(ip, str(args, "format")));
                 }
         );
     }
@@ -80,7 +83,7 @@ public class IpWhoisTools {
     // asnWhoisLookup
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification asnWhoisSpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification asnWhoisSpec() {
         String schema = """
                 {
                   "type": "object",
@@ -98,7 +101,7 @@ public class IpWhoisTools {
                   "required": ["asn"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "asnWhoisLookup",
                         """
@@ -116,10 +119,11 @@ public class IpWhoisTools {
                         - format (optional): json (default) or xml
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String asn = str(args, "asn");
                     if (asn == null) return result("Error: 'asn' is required.");
-                    return result(service.asnWhois(asn, str(args, "format")));
+                    return result(services.apply(context).asnWhois(asn, str(args, "format")));
                 }
         );
     }

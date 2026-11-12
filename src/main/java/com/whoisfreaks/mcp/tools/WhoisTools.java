@@ -1,11 +1,13 @@
 package com.whoisfreaks.mcp.tools;
 
 import com.whoisfreaks.mcp.WhoisFreaksService;
-import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * MCP tools for WhoisFreaks WHOIS APIs.
@@ -17,13 +19,13 @@ import java.util.Map;
  */
 public class WhoisTools {
 
-    private final WhoisFreaksService service;
+    private final Function<McpTransportContext, WhoisFreaksService> services;
 
-    public WhoisTools(WhoisFreaksService service) {
-        this.service = service;
+    public WhoisTools(Function<McpTransportContext, WhoisFreaksService> services) {
+        this.services = services;
     }
 
-    public List<McpServerFeatures.SyncToolSpecification> specs() {
+    public List<McpStatelessServerFeatures.SyncToolSpecification> specs() {
         return List.of(
                 liveWhoisSpec(),
                 whoisHistorySpec(),
@@ -35,7 +37,7 @@ public class WhoisTools {
     // liveWhoisLookup
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification liveWhoisSpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification liveWhoisSpec() {
         String schema = """
                 {
                   "type": "object",
@@ -53,7 +55,7 @@ public class WhoisTools {
                   "required": ["domainName"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "liveWhoisLookup",
                         """
@@ -69,10 +71,11 @@ public class WhoisTools {
                         - format (optional): json (default) or xml
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String domain = str(args, "domainName");
                     if (domain == null) return result("Error: 'domainName' is required.");
-                    return result(service.liveWhois(domain, str(args, "format")));
+                    return result(services.apply(context).liveWhois(domain, str(args, "format")));
                 }
         );
     }
@@ -81,7 +84,7 @@ public class WhoisTools {
     // whoisHistory
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification whoisHistorySpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification whoisHistorySpec() {
         String schema = """
                 {
                   "type": "object",
@@ -99,7 +102,7 @@ public class WhoisTools {
                   "required": ["domainName"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "whoisHistory",
                         """
@@ -116,10 +119,11 @@ public class WhoisTools {
                         - format (optional): json (default) or xml
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String domain = str(args, "domainName");
                     if (domain == null) return result("Error: 'domainName' is required.");
-                    return result(service.whoisHistory(domain, str(args, "format")));
+                    return result(services.apply(context).whoisHistory(domain, str(args, "format")));
                 }
         );
     }
@@ -128,7 +132,7 @@ public class WhoisTools {
     // reverseWhoisLookup
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification reverseWhoisSpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification reverseWhoisSpec() {
         String schema = """
                 {
                   "type": "object",
@@ -170,7 +174,7 @@ public class WhoisTools {
                   }
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "reverseWhoisLookup",
                         """
@@ -190,7 +194,8 @@ public class WhoisTools {
                         Note: Provide exactly one of email, keyword, owner, or company.
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String keyword = str(args, "keyword");
                     String email   = str(args, "email");
                     String owner   = str(args, "owner");
@@ -205,7 +210,7 @@ public class WhoisTools {
                     String mode   = str(args, "mode");
                     String format = str(args, "format");
 
-                    return result(service.reverseWhois(keyword, email, owner, company, mode, exact, page, format));
+                    return result(services.apply(context).reverseWhois(keyword, email, owner, company, mode, exact, page, format));
                 }
         );
     }

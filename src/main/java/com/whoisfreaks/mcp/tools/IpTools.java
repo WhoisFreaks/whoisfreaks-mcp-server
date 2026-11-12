@@ -1,11 +1,13 @@
 package com.whoisfreaks.mcp.tools;
 
 import com.whoisfreaks.mcp.WhoisFreaksService;
-import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * MCP tools for WhoisFreaks IP intelligence APIs.
@@ -16,13 +18,13 @@ import java.util.Map;
  */
 public class IpTools {
 
-    private final WhoisFreaksService service;
+    private final Function<McpTransportContext, WhoisFreaksService> services;
 
-    public IpTools(WhoisFreaksService service) {
-        this.service = service;
+    public IpTools(Function<McpTransportContext, WhoisFreaksService> services) {
+        this.services = services;
     }
 
-    public List<McpServerFeatures.SyncToolSpecification> specs() {
+    public List<McpStatelessServerFeatures.SyncToolSpecification> specs() {
         return List.of(
                 ipGeolocationSpec(),
                 ipSecuritySpec()
@@ -33,7 +35,7 @@ public class IpTools {
     // ipGeolocation
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification ipGeolocationSpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification ipGeolocationSpec() {
         String schema = """
                 {
                   "type": "object",
@@ -46,7 +48,7 @@ public class IpTools {
                   "required": ["ip"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "ipGeolocation",
                         """
@@ -64,10 +66,11 @@ public class IpTools {
                         Note: Returns HTTP 423 for bogon/non-routable IP ranges (10.x.x.x, 192.168.x.x, etc.)
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String ip = str(args, "ip");
                     if (ip == null) return result("Error: 'ip' is required.");
-                    return result(service.ipGeolocation(ip));
+                    return result(services.apply(context).ipGeolocation(ip));
                 }
         );
     }
@@ -76,7 +79,7 @@ public class IpTools {
     // ipSecurity
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification ipSecuritySpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification ipSecuritySpec() {
         String schema = """
                 {
                   "type": "object",
@@ -89,7 +92,7 @@ public class IpTools {
                   "required": ["ip"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "ipSecurity",
                         """
@@ -109,10 +112,11 @@ public class IpTools {
                           Examples: 1.1.1.1 | 185.220.101.0 (Tor exit node)
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String ip = str(args, "ip");
                     if (ip == null) return result("Error: 'ip' is required.");
-                    return result(service.ipSecurity(ip));
+                    return result(services.apply(context).ipSecurity(ip));
                 }
         );
     }

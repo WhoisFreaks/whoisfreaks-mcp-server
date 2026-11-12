@@ -10,7 +10,7 @@
 #
 # Build & push multi-arch image to Docker Hub:
 #   docker buildx build --platform linux/amd64,linux/arm64 \
-#     -f deploy/Dockerfile -t whoisfreaks/mcp-server:1.0.0 --push .
+#     -f deploy/Dockerfile -t whoisfreaks/mcp-server:2.0.0 --push .
 
 # ---- Build stage ----
 # --platform=$BUILDPLATFORM ensures Maven always compiles on the native host
@@ -30,31 +30,22 @@ RUN mvn clean package -q -DskipTests
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
-# Install Node.js LTS via NodeSource (ships a modern npm — avoids outdated Ubuntu package)
-# then install mcp-proxy: the official stdio→HTTP/SSE bridge for MCP servers.
-# Package: https://www.npmjs.com/package/mcp-proxy
-RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends curl ca-certificates && \
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
-    apt-get install -y --no-install-recommends nodejs && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    npm install -g mcp-proxy
-
 # Create a non-root system user for security
 RUN groupadd --system whoisfreaks && \
     useradd --system --no-create-home --shell /usr/sbin/nologin --gid whoisfreaks whoisfreaks
 
 # Copy the fat JAR produced by the build stage
-COPY --from=build /app/target/whoisfreaks-mcp-server-1.0.0.jar app.jar
+COPY --from=build /app/target/whoisfreaks-mcp-server-2.0.0.jar app.jar
 RUN chown whoisfreaks:whoisfreaks app.jar
 
 USER whoisfreaks
 
-# Injected at runtime via -e flag, docker-compose environment, or .env file
+# Only used in stdio mode (docker run -i --entrypoint java ... -jar app.jar).
+# The default HTTP mode needs no server-side key: each client sends its own.
 ENV WHOISFREAKS_API_KEY=""
+ENV PORT=3100
 
-# mcp-proxy listens on 3100 and spawns the Java MCP server as a stdio subprocess
+# Hosted multi-user Streamable HTTP server at http://<host>:3100/mcp
 EXPOSE 3100
 
-CMD ["mcp-proxy", "--port", "3100", "--", "java", "-jar", "app.jar"]
+CMD ["java", "-jar", "app.jar", "--http"]

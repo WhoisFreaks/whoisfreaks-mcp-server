@@ -2,33 +2,37 @@
 
 A **Model Context Protocol (MCP)** server that exposes the full **WhoisFreaks API** suite as AI-callable tools. Works with Claude Desktop, Cursor, Windsurf, VS Code, Continue, Zed, and any other MCP-compatible AI client.
 
-**Two ways to run it — pick what fits your setup:**
+**Three ways to use it — pick what fits your setup:**
 
 | | Method | Requires | Best for |
 |--|--------|----------|----------|
-| ⭐ **Recommended** | Docker (pre-built image) | Docker only | Everyone — no Java or Maven needed |
+| ⭐ **Easiest** | [Hosted server](#hosted-server-no-install) | Just your API key | Everyone — nothing to install |
+| | Docker (pre-built image) | Docker | Running it on your own machine or VM |
 | | Build from source | Java 17 + Maven | Contributors / custom builds |
 
-Once running, connect it to any MCP client via **stdio** (local) or **HTTP/SSE on port 3100** (remote VM).
+Connect it to any MCP client via **Streamable HTTP** (`/mcp` endpoint, hosted or self-hosted) or **stdio** (local).
+
+Every user brings their **own WhoisFreaks API key** — the HTTP server stores no key of its own and uses the key sent with each request.
 
 ---
 
 ## Table of Contents
 
 1. [Tools Reference (14 tools)](#tools-reference)
-2. [Quick Start](#quick-start)
+2. [Hosted Server (no install)](#hosted-server-no-install)
+3. [Quick Start](#quick-start)
    - [⭐ Recommended — Docker](#-recommended--docker)
    - [Build from Source](#build-from-source)
-3. [Prerequisites](#prerequisites)
-4. [Platform Integration](#platform-integration)
+4. [Prerequisites](#prerequisites)
+5. [Platform Integration](#platform-integration)
    - [1. Claude Desktop](#1-claude-desktop)
    - [2. Cursor IDE](#2-cursor-ide)
    - [3. Windsurf IDE](#3-windsurf-ide)
    - [4. VS Code + GitHub Copilot](#4-vs-code--github-copilot)
    - [5. Continue.dev](#5-continuedev)
    - [6. Zed Editor](#6-zed-editor)
-5. [Example Prompts](#example-prompts)
-6. [Troubleshooting](#troubleshooting)
+6. [Example Prompts](#example-prompts)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -74,13 +78,75 @@ Once running, connect it to any MCP client via **stdio** (local) or **HTTP/SSE o
 
 ---
 
+## Hosted Server (no install)
+
+Point any MCP client that supports remote servers at:
+
+```
+https://mcp.whoisfreaks.com/mcp
+```
+
+and send your WhoisFreaks API key ([get one free](https://whoisfreaks.com/signup)) in **one** of these ways:
+
+| Method | Example | Use with |
+|--------|---------|----------|
+| `Authorization` header | `Authorization: Bearer YOUR_API_KEY` | Claude Code, Cursor, VS Code, Windsurf, Continue |
+| `X-API-Key` header | `X-API-Key: YOUR_API_KEY` | Any client that supports custom headers |
+| Query parameter | `https://mcp.whoisfreaks.com/mcp?apiKey=YOUR_API_KEY` | Clients without custom headers (claude.ai / Claude Desktop custom connectors) |
+
+> Prefer a header when your client supports one — URLs with keys can end up in logs and history.
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http whoisfreaks https://mcp.whoisfreaks.com/mcp \
+  --header "Authorization: Bearer YOUR_API_KEY"
+```
+
+**claude.ai / Claude Desktop** — Settings → Connectors → **Add custom connector**, URL:
+
+```
+https://mcp.whoisfreaks.com/mcp?apiKey=YOUR_API_KEY
+```
+
+**Cursor** (`~/.cursor/mcp.json`), **Windsurf**, and other JSON-configured clients:
+
+```json
+{
+  "mcpServers": {
+    "whoisfreaks": {
+      "url": "https://mcp.whoisfreaks.com/mcp",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    }
+  }
+}
+```
+
+**VS Code** (`.vscode/mcp.json`):
+
+```json
+{
+  "servers": {
+    "whoisfreaks": {
+      "type": "http",
+      "url": "https://mcp.whoisfreaks.com/mcp",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    }
+  }
+}
+```
+
+Without a key the server still connects and lists its tools, but every tool call returns an error explaining how to add one. API usage is billed to the key you send.
+
+---
+
 ## Quick Start
 
 ### ⭐ Recommended — Docker
 
 No Java or Maven required. Pull the pre-built image directly from Docker Hub and run.
 
-**Get your free API key first:** [whoisfreaks.com/signup](https://whoisfreaks.com/signup)
+The container runs the same multi-user HTTP server as the hosted one: it needs **no API key of its own** — clients send theirs with each request (see [Hosted Server](#hosted-server-no-install) for the ways to send it). Get a free key at [whoisfreaks.com/signup](https://whoisfreaks.com/signup).
 
 ---
 
@@ -91,11 +157,10 @@ docker run -d \
   --name whoisfreaks-mcp \
   --restart unless-stopped \
   -p 3100:3100 \
-  -e WHOISFREAKS_API_KEY=your-api-key-here \
   whoisfreaks/mcp-server:latest
 ```
 
-The MCP gateway is now live at **`http://localhost:3100/sse`**.
+The MCP server is now live at **`http://localhost:3100/mcp`**.
 
 ---
 
@@ -111,8 +176,6 @@ services:
     restart: unless-stopped
     ports:
       - "3100:3100"
-    environment:
-      WHOISFREAKS_API_KEY: your-api-key-here
 ```
 
 Start it:
@@ -121,13 +184,31 @@ Start it:
 docker compose up -d
 ```
 
-Or use a `.env` file instead of hardcoding the key (recommended):
+---
 
-```bash
-# Create .env file (never commit this to git)
-echo "WHOISFREAKS_API_KEY=your-api-key-here" > .env
-docker compose up -d
+#### Serving it publicly (HTTPS)
+
+Put a reverse proxy with TLS in front of port 3100. Caddy example (`Caddyfile`), which obtains a certificate automatically:
+
 ```
+mcp.example.com {
+    reverse_proxy localhost:3100
+}
+```
+
+Nginx example:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3100;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_buffering off;          # stream responses as they are produced
+    proxy_read_timeout 300s;      # some WHOIS lookups are slow
+}
+```
+
+The server is stateless (no MCP sessions), so you can run several containers behind a load balancer without sticky sessions.
 
 ---
 
@@ -137,19 +218,23 @@ docker compose up -d
 # Container should show as "Up"
 docker ps
 
-# SSE endpoint should respond
+# Health check
 curl http://localhost:3100/health
 # → {"status":"ok"}
 
-# List all 14 registered tools
-curl http://localhost:3100/tools/list
+# List all 14 registered tools (any key works for listing; tool calls need a valid one)
+curl -s http://localhost:3100/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer your-api-key-here" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
 ---
 
 #### Use with Claude Desktop (Docker stdio mode)
 
-Claude Desktop requires stdio transport. Override the Docker entrypoint to bypass `mcp-proxy` and run the JAR directly:
+To run the server locally over stdio instead of HTTP, override the Docker entrypoint and pass your key as an environment variable:
 
 ```json
 {
@@ -195,11 +280,11 @@ mvn clean package -q
 This produces a single self-contained fat JAR:
 
 ```
-target/whoisfreaks-mcp-server-1.0.0.jar
+target/whoisfreaks-mcp-server-2.0.0.jar
 ```
 
 > **Tip:** Note the **absolute path** to this JAR — you will need it in the platform configs below.
-> Example: `/Users/yourname/whoisfreaks-mcp-server/target/whoisfreaks-mcp-server-1.0.0.jar`
+> Example: `/Users/yourname/whoisfreaks-mcp-server/target/whoisfreaks-mcp-server-2.0.0.jar`
 
 ---
 
@@ -217,7 +302,7 @@ target/whoisfreaks-mcp-server-1.0.0.jar
 
 ### 1. Claude Desktop
 
-The most popular MCP client. Claude Desktop launches the MCP server as a subprocess on startup and communicates via **stdio** — it does not support SSE/HTTP URLs.
+The simplest setup is the [hosted server](#hosted-server-no-install) as a custom connector (Settings → Connectors → **Add custom connector**). To run it locally instead, Claude Desktop launches the MCP server as a subprocess via **stdio** using `claude_desktop_config.json`:
 
 **Config file location:**
 
@@ -259,7 +344,7 @@ The most popular MCP client. Claude Desktop launches the MCP server as a subproc
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -283,22 +368,22 @@ The most popular MCP client. Claude Desktop launches the MCP server as a subproc
 
 ### 2. Cursor IDE
 
-Cursor supports both stdio and SSE transports. Config file: `~/.cursor/mcp.json`
+Cursor supports both remote (HTTP) and stdio servers. Config file: `~/.cursor/mcp.json`
 
-**⭐ Option A — Docker via SSE (recommended)**
+**⭐ Option A — HTTP (hosted, or your own container)**
 
 ```json
 {
   "mcpServers": {
     "whoisfreaks": {
-      "url": "http://localhost:3100/sse",
-      "transport": "sse"
+      "url": "https://mcp.whoisfreaks.com/mcp",
+      "headers": { "Authorization": "Bearer your-api-key-here" }
     }
   }
 }
 ```
 
-> Start the Docker container first: `docker run -d -p 3100:3100 -e WHOISFREAKS_API_KEY=your-key whoisfreaks/mcp-server:latest`
+> For your own container use `http://localhost:3100/mcp` (start it with `docker run -d -p 3100:3100 whoisfreaks/mcp-server:latest`).
 
 ---
 
@@ -330,7 +415,7 @@ Cursor supports both stdio and SSE transports. Config file: `~/.cursor/mcp.json`
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -385,7 +470,7 @@ Windsurf (by Codeium) supports MCP via its Cascade AI sidebar.
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -410,20 +495,21 @@ VS Code supports MCP tools through the GitHub Copilot extension (Chat Participan
 
 **Config file** (`.vscode/mcp.json` in your workspace, or `~/.vscode/mcp.json` globally):
 
-**⭐ Option A — Docker via SSE (recommended, container must be running)**
+**⭐ Option A — HTTP (hosted, or your own container)**
 
 ```json
 {
   "servers": {
     "whoisfreaks": {
-      "type": "sse",
-      "url": "http://localhost:3100/sse"
+      "type": "http",
+      "url": "https://mcp.whoisfreaks.com/mcp",
+      "headers": { "Authorization": "Bearer your-api-key-here" }
     }
   }
 }
 ```
 
-> Start the container first: `docker run -d -p 3100:3100 -e WHOISFREAKS_API_KEY=your-key whoisfreaks/mcp-server:latest`
+> For your own container use `http://localhost:3100/mcp` (start it with `docker run -d -p 3100:3100 whoisfreaks/mcp-server:latest`).
 
 **Option B — Docker via stdio**
 
@@ -453,7 +539,7 @@ VS Code supports MCP tools through the GitHub Copilot extension (Chat Participan
     "whoisfreaks": {
       "type": "stdio",
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -480,21 +566,21 @@ Continue is an open-source AI coding assistant with MCP support for VS Code and 
 
 **Config file** (`~/.continue/config.json`):
 
-**⭐ Option A — Docker via SSE (recommended, container must be running)**
+**⭐ Option A — HTTP (hosted, or your own container)**
 
 ```json
 {
   "mcpServers": [
     {
       "name": "whoisfreaks",
-      "url": "http://localhost:3100/sse",
-      "transport": "sse"
+      "url": "https://mcp.whoisfreaks.com/mcp?apiKey=your-api-key-here",
+      "transport": "streamable-http"
     }
   ]
 }
 ```
 
-> Start the container first: `docker run -d -p 3100:3100 -e WHOISFREAKS_API_KEY=your-key whoisfreaks/mcp-server:latest`
+> For your own container use `http://localhost:3100/mcp?apiKey=...` (start it with `docker run -d -p 3100:3100 whoisfreaks/mcp-server:latest`).
 
 **Option B — Docker via stdio**
 
@@ -524,7 +610,7 @@ Continue is an open-source AI coding assistant with MCP support for VS Code and 
     {
       "name": "whoisfreaks",
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -577,7 +663,7 @@ Zed has a built-in AI assistant with MCP support via its `assistant` configurati
     "mcp_servers": {
       "whoisfreaks": {
         "command": "java",
-        "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-1.0.0.jar"],
+        "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
         "env": {
           "WHOISFREAKS_API_KEY": "your-api-key-here"
         }
@@ -634,7 +720,9 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `WHOISFREAKS_API_KEY` | **Yes** | Your API key from [whoisfreaks.com/billing](https://whoisfreaks.com/billing). All 14 tools call `api.whoisfreaks.com` directly using this key — no other variables are needed. |
+| `WHOISFREAKS_API_KEY` | stdio mode only | Your API key from [whoisfreaks.com/billing](https://whoisfreaks.com/billing). Not used in HTTP mode, where each request carries the caller's own key. |
+| `MCP_TRANSPORT` | No | `http` to run the hosted HTTP server (same as the `--http` flag). The Docker image runs HTTP mode by default. |
+| `PORT` | No | HTTP port. Default: `3100`. |
 
 ---
 
@@ -644,7 +732,8 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| `WHOISFREAKS_API_KEY is not set` | Missing env var | Add `-e WHOISFREAKS_API_KEY=your-key` to the Docker command, or add it to the `env` block in your client config |
+| `WHOISFREAKS_API_KEY is not set` (stdio) | Missing env var | Add `-e WHOISFREAKS_API_KEY=your-key` to the Docker command, or add it to the `env` block in your client config |
+| `No WhoisFreaks API key was sent` (HTTP) | Client sent no key | Add `Authorization: Bearer your-key`, an `X-API-Key` header, or `?apiKey=your-key` to the URL, then reconnect |
 | `Unauthorized (HTTP 401/403)` | Invalid or inactive API key | Verify the key at whoisfreaks.com/billing |
 | `No data found (HTTP 404)` | Domain/IP/ASN not in database | Double-check the input value is correct |
 | `Rate limit reached (HTTP 429)` | Too many requests | Slow down or upgrade your plan |
@@ -656,13 +745,13 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 | Problem | Cause | Fix |
 |---------|-------|-----|
 | `Cannot connect to Docker daemon` | Docker Desktop not running | Open Docker Desktop and wait for the engine to start |
-| Container exits immediately | Missing API key or wrong entrypoint | Check logs: `docker logs whoisfreaks-mcp` |
+| Container exits immediately | Port in use or wrong entrypoint | Check logs: `docker logs whoisfreaks-mcp` |
 | `port 3100 already in use` | Another process on port 3100 | Stop it: `docker rm -f whoisfreaks-mcp` then retry |
 | `no such image` | Image not pulled yet | Run `docker pull whoisfreaks/mcp-server:latest` first |
 | Claude Desktop: tools not appearing with Docker config | Docker not in PATH seen by the app | Use the full Docker path: `/usr/local/bin/docker` as the `command` |
 | `lstat deploy: no such file or directory` (CI/CD) | Relative path issue in GitHub Actions | Use `${{ github.workspace }}/deploy/Dockerfile` for absolute paths |
 | Gateway `connection refused` on port 3100 | Container not running or port not mapped | Run `docker ps` — ensure `-p 3100:3100` is in the run command |
-| SSE connection drops after a few seconds | Nginx proxy timeout | Add `proxy_read_timeout 3600s;` to your Nginx location block |
+| `504` / timeouts behind Nginx | Nginx proxy timeout shorter than a slow lookup | Add `proxy_read_timeout 300s;` and `proxy_buffering off;` to your Nginx location block |
 
 ### Client Errors
 
@@ -672,7 +761,8 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 | `UnsupportedClassVersionError` (JAR mode) | Java version too old | Upgrade to Java 17+ (`java -version` to check) |
 | Wrong JAR path | Relative path in config | Use the full absolute path to the JAR |
 | Cursor shows tools but doesn't call them | Agent mode not enabled | Switch Cursor to **Agent** mode, not Chat mode |
-| Claude Desktop skips whoisfreaks entry | SSE URL used instead of stdio | Claude Desktop requires `command`/`args` — not `url`. Use the Docker stdio config shown above |
+| Claude Desktop skips whoisfreaks entry | `url` used in `claude_desktop_config.json` | That file needs `command`/`args` (stdio). For a URL, add a custom connector in Settings → Connectors instead |
+| Client can't connect to `/sse` | Pre-2.0 SSE endpoint was removed | Use the `/mcp` URL (Streamable HTTP) |
 | Windsurf tools not called | Wrong Cascade mode | Switch Cascade to **Write** mode from the Cascade header |
 
 ---

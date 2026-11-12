@@ -1,11 +1,13 @@
 package com.whoisfreaks.mcp.tools;
 
 import com.whoisfreaks.mcp.WhoisFreaksService;
-import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * MCP tools for WhoisFreaks DNS APIs.
@@ -17,13 +19,13 @@ import java.util.Map;
  */
 public class DnsTools {
 
-    private final WhoisFreaksService service;
+    private final Function<McpTransportContext, WhoisFreaksService> services;
 
-    public DnsTools(WhoisFreaksService service) {
-        this.service = service;
+    public DnsTools(Function<McpTransportContext, WhoisFreaksService> services) {
+        this.services = services;
     }
 
-    public List<McpServerFeatures.SyncToolSpecification> specs() {
+    public List<McpStatelessServerFeatures.SyncToolSpecification> specs() {
         return List.of(
                 dnsLookupSpec(),
                 dnsHistorySpec(),
@@ -35,7 +37,7 @@ public class DnsTools {
     // dnsLookup
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification dnsLookupSpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification dnsLookupSpec() {
         String schema = """
                 {
                   "type": "object",
@@ -58,7 +60,7 @@ public class DnsTools {
                   "required": ["domainName"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "dnsLookup",
                         """
@@ -79,10 +81,11 @@ public class DnsTools {
                         - format (optional): json (default) or xml
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String domain = str(args, "domainName");
                     if (domain == null) return result("Error: 'domainName' is required.");
-                    return result(service.dnsLookup(domain, str(args, "type"), str(args, "format")));
+                    return result(services.apply(context).dnsLookup(domain, str(args, "type"), str(args, "format")));
                 }
         );
     }
@@ -91,7 +94,7 @@ public class DnsTools {
     // dnsHistory
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification dnsHistorySpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification dnsHistorySpec() {
         String schema = """
                 {
                   "type": "object",
@@ -118,7 +121,7 @@ public class DnsTools {
                   "required": ["domainName"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "dnsHistory",
                         """
@@ -135,11 +138,12 @@ public class DnsTools {
                         - format (optional): json (default) or xml
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String domain = str(args, "domainName");
                     if (domain == null) return result("Error: 'domainName' is required.");
                     Integer page = args.get("page") instanceof Number n ? n.intValue() : null;
-                    return result(service.dnsHistory(domain, str(args, "type"), page, str(args, "format")));
+                    return result(services.apply(context).dnsHistory(domain, str(args, "type"), page, str(args, "format")));
                 }
         );
     }
@@ -148,7 +152,7 @@ public class DnsTools {
     // reverseDnsLookup
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification reverseDnsSpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification reverseDnsSpec() {
         String schema = """
                 {
                   "type": "object",
@@ -179,7 +183,7 @@ public class DnsTools {
                   "required": ["value"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "reverseDnsLookup",
                         """
@@ -200,12 +204,13 @@ public class DnsTools {
                         - format (optional): json (default) or xml
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String value = str(args, "value");
                     if (value == null) return result("Error: 'value' is required.");
                     Boolean exact = args.get("exact") instanceof Boolean b ? b : null;
                     Integer page  = args.get("page") instanceof Number n ? n.intValue() : null;
-                    return result(service.reverseDns(value, str(args, "type"), exact, page, str(args, "format")));
+                    return result(services.apply(context).reverseDns(value, str(args, "type"), exact, page, str(args, "format")));
                 }
         );
     }

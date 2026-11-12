@@ -1,11 +1,13 @@
 package com.whoisfreaks.mcp.tools;
 
 import com.whoisfreaks.mcp.WhoisFreaksService;
-import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * MCP tools for WhoisFreaks Domain APIs.
@@ -17,13 +19,13 @@ import java.util.Map;
  */
 public class DomainTools {
 
-    private final WhoisFreaksService service;
+    private final Function<McpTransportContext, WhoisFreaksService> services;
 
-    public DomainTools(WhoisFreaksService service) {
-        this.service = service;
+    public DomainTools(Function<McpTransportContext, WhoisFreaksService> services) {
+        this.services = services;
     }
 
-    public List<McpServerFeatures.SyncToolSpecification> specs() {
+    public List<McpStatelessServerFeatures.SyncToolSpecification> specs() {
         return List.of(
                 domainAvailabilitySpec(),
                 subdomainLookupSpec(),
@@ -35,7 +37,7 @@ public class DomainTools {
     // domainAvailability
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification domainAvailabilitySpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification domainAvailabilitySpec() {
         String schema = """
                 {
                   "type": "object",
@@ -61,7 +63,7 @@ public class DomainTools {
                   "required": ["domain"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "domainAvailability",
                         """
@@ -79,12 +81,13 @@ public class DomainTools {
                         - format (optional): json (default) or xml
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String domain = str(args, "domain");
                     if (domain == null) return result("Error: 'domain' is required.");
                     Boolean suggestions = args.get("suggestions") instanceof Boolean b ? b : null;
                     Integer count       = args.get("count") instanceof Number n ? n.intValue() : null;
-                    return result(service.domainAvailability(domain, suggestions, count, str(args, "format")));
+                    return result(services.apply(context).domainAvailability(domain, suggestions, count, str(args, "format")));
                 }
         );
     }
@@ -93,7 +96,7 @@ public class DomainTools {
     // subdomainLookup
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification subdomainLookupSpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification subdomainLookupSpec() {
         String schema = """
                 {
                   "type": "object",
@@ -128,7 +131,7 @@ public class DomainTools {
                   "required": ["domain"]
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "subdomainLookup",
                         """
@@ -148,11 +151,12 @@ public class DomainTools {
                         - format (optional): json (default) or xml
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String domain = str(args, "domain");
                     if (domain == null) return result("Error: 'domain' is required.");
                     Integer page = args.get("page") instanceof Number n ? n.intValue() : null;
-                    return result(service.subdomainLookup(
+                    return result(services.apply(context).subdomainLookup(
                             domain,
                             str(args, "status"),
                             str(args, "after"),
@@ -168,7 +172,7 @@ public class DomainTools {
     // domainDiscovery (Typos / Typosquatting)
     // =========================================================================
 
-    private McpServerFeatures.SyncToolSpecification domainDiscoverySpec() {
+    private McpStatelessServerFeatures.SyncToolSpecification domainDiscoverySpec() {
         String schema = """
                 {
                   "type": "object",
@@ -197,7 +201,7 @@ public class DomainTools {
                   }
                 }
                 """;
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 new McpSchema.Tool(
                         "domainDiscovery",
                         """
@@ -220,7 +224,8 @@ public class DomainTools {
                         Note: Provide at least one of 'keyword' or 'pattern'.
                         """,
                         schema),
-                (exchange, args) -> {
+                (context, request) -> {
+                    Map<String, Object> args = request.arguments() != null ? request.arguments() : Map.of();
                     String keyword = str(args, "keyword");
                     String pattern = str(args, "pattern");
                     if (keyword == null && pattern == null) {
@@ -228,7 +233,7 @@ public class DomainTools {
                     }
                     Integer labelLength = args.get("labelLength") instanceof Number n ? n.intValue() : null;
                     Integer page        = args.get("page") instanceof Number n ? n.intValue() : null;
-                    return result(service.domainDiscovery(keyword, pattern, labelLength, page, str(args, "format")));
+                    return result(services.apply(context).domainDiscovery(keyword, pattern, labelLength, page, str(args, "format")));
                 }
         );
     }
