@@ -1,4 +1,4 @@
-# setup.yml, system part: OS check, root logins blocked, packages, SELinux and firewall.
+# setup.yml, system part: OS check, packages, SELinux and firewall.
 - name: Check the machine and the login
   ansible.builtin.assert:
     that:
@@ -9,42 +9,6 @@
       setup.yml expects Rocky Linux 9 (found {{ ansible_distribution }} {{ ansible_distribution_version }}) and to
       log in as {{ deploy_user }} (logs in as {{ ansible_user }}).
     quiet: true
-
-- name: Block SSH logins as root
-  become: true
-  block:
-    - name: Add an sshd setting that refuses root
-      ansible.builtin.copy:
-        dest: /etc/ssh/sshd_config.d/00-whoisfreaks-mcp.conf
-        content: |
-          # Written by ansible/setup.yml
-          PermitRootLogin no
-        mode: "0600"
-      register: sshd_setting
-
-    - name: Test the sshd config
-      ansible.builtin.command: sshd -t
-      changed_when: false
-      when: sshd_setting.changed
-
-    - name: Reload sshd
-      ansible.builtin.systemd_service:
-        name: sshd
-        state: reloaded
-      when: sshd_setting.changed
-
-    - name: Read the settings sshd uses
-      ansible.builtin.command: sshd -T
-      register: sshd_effective
-      changed_when: false
-      check_mode: false
-
-    - name: Check root can't log in
-      ansible.builtin.assert:
-        that: "'permitrootlogin no' in sshd_effective.stdout_lines"
-        fail_msg: sshd still allows root logins; check that /etc/ssh/sshd_config includes /etc/ssh/sshd_config.d/*.conf.
-        quiet: true
-      when: not ansible_check_mode
 
 - name: Install packages
   become: true

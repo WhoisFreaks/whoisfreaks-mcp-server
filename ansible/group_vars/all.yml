@@ -34,7 +34,7 @@ node_check_status: 200
 git_host: github.com
 git_branch: master
 git_repos: ["."]  # under code_dir: the one repository
-code_dir: "/home/{{ ansible_user }}/code/whoisfreaks-mcp-server"
+code_dir: "/home/{{ deploy_user }}/code/whoisfreaks-mcp-server"
 maven_command: /opt/maven/bin/mvn
 java_home: /usr/lib/jvm/java-17-openjdk
 # The build's fat JAR. Its name carries the version from pom.xml, so it is found by pattern; the
@@ -56,7 +56,7 @@ app_start_timeout: 120   # seconds to wait for a new version to answer
 ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new
 
 # ---- Setting up the machine (setup.yml) ----
-deploy_user: "{{ ansible_user }}"  # created on the machine: MCP_SERVER_USER, the user Ansible logs in as
+deploy_user: "{{ login_user }}"    # created on the machine: MCP_SERVER_USER, the user Ansible logs in as
 bootstrap_user: root               # the provider's first login, used once to create deploy_user
 # Public keys allowed to log in as deploy_user: those of the machine running ansible-playbook.
 setup_ssh_public_keys: >-

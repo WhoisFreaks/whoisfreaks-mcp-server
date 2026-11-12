@@ -83,8 +83,10 @@ Every user brings their **own WhoisFreaks API key** — the HTTP server stores n
 Point any MCP client that supports remote servers at:
 
 ```
-https://mcp.whoisfreaks.com/mcp
+https://mcp.whoisfreaks.com
 ```
+
+(`https://mcp.whoisfreaks.com/mcp` is the same endpoint, for clients or configs that expect that path)
 
 and send your WhoisFreaks API key ([get one free](https://billing.whoisfreaks.com/signup)) in **one** of these ways:
 
@@ -92,21 +94,21 @@ and send your WhoisFreaks API key ([get one free](https://billing.whoisfreaks.co
 |--------|---------|----------|
 | `Authorization` header | `Authorization: Bearer YOUR_API_KEY` | Claude Code, Cursor, VS Code, Windsurf, Continue |
 | `X-API-Key` header | `X-API-Key: YOUR_API_KEY` | Any client that supports custom headers |
-| Query parameter | `https://mcp.whoisfreaks.com/mcp?apiKey=YOUR_API_KEY` | Clients without custom headers (claude.ai / Claude Desktop custom connectors) |
+| Query parameter | `https://mcp.whoisfreaks.com/?apiKey=YOUR_API_KEY` | Clients without custom headers (claude.ai / Claude Desktop custom connectors) |
 
 > Prefer a header when your client supports one — URLs with keys can end up in logs and history.
 
 **Claude Code**
 
 ```bash
-claude mcp add --transport http whoisfreaks https://mcp.whoisfreaks.com/mcp \
+claude mcp add --transport http whoisfreaks https://mcp.whoisfreaks.com \
   --header "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **claude.ai / Claude Desktop** — Settings → Connectors → **Add custom connector**, URL:
 
 ```
-https://mcp.whoisfreaks.com/mcp?apiKey=YOUR_API_KEY
+https://mcp.whoisfreaks.com/?apiKey=YOUR_API_KEY
 ```
 
 **Cursor** (`~/.cursor/mcp.json`), **Windsurf**, and other JSON-configured clients:
@@ -115,7 +117,7 @@ https://mcp.whoisfreaks.com/mcp?apiKey=YOUR_API_KEY
 {
   "mcpServers": {
     "whoisfreaks": {
-      "url": "https://mcp.whoisfreaks.com/mcp",
+      "url": "https://mcp.whoisfreaks.com",
       "headers": { "Authorization": "Bearer YOUR_API_KEY" }
     }
   }
@@ -129,7 +131,7 @@ https://mcp.whoisfreaks.com/mcp?apiKey=YOUR_API_KEY
   "servers": {
     "whoisfreaks": {
       "type": "http",
-      "url": "https://mcp.whoisfreaks.com/mcp",
+      "url": "https://mcp.whoisfreaks.com",
       "headers": { "Authorization": "Bearer YOUR_API_KEY" }
     }
   }
@@ -378,7 +380,7 @@ Cursor supports both remote (HTTP) and stdio servers. Config file: `~/.cursor/mc
 {
   "mcpServers": {
     "whoisfreaks": {
-      "url": "https://mcp.whoisfreaks.com/mcp",
+      "url": "https://mcp.whoisfreaks.com",
       "headers": { "Authorization": "Bearer your-api-key-here" }
     }
   }
@@ -504,7 +506,7 @@ VS Code supports MCP tools through the GitHub Copilot extension (Chat Participan
   "servers": {
     "whoisfreaks": {
       "type": "http",
-      "url": "https://mcp.whoisfreaks.com/mcp",
+      "url": "https://mcp.whoisfreaks.com",
       "headers": { "Authorization": "Bearer your-api-key-here" }
     }
   }
@@ -575,7 +577,7 @@ Continue is an open-source AI coding assistant with MCP support for VS Code and 
   "mcpServers": [
     {
       "name": "whoisfreaks",
-      "url": "https://mcp.whoisfreaks.com/mcp?apiKey=your-api-key-here",
+      "url": "https://mcp.whoisfreaks.com/?apiKey=your-api-key-here",
       "transport": "streamable-http"
     }
   ]

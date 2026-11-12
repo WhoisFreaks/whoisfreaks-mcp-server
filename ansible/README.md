@@ -1,6 +1,6 @@
 # WhoisFreaks MCP server deployment
 
-Sets up one machine as the hosted MCP server (`https://<MCP_HOSTNAME>/mcp`) and deploys new versions to it.
+Sets up one machine as the hosted MCP server (`https://<MCP_HOSTNAME>`, also at `/mcp`) and deploys new versions to it.
 
 | Playbook | Does |
 |---|---|
@@ -59,13 +59,15 @@ Everything else (branch, paths, Java heap, rate limit) is in `group_vars/all.yml
 
 A failed run can simply be run again: finished steps are left as they are.
 
+**Logins.** The first run logs in as root, because a new machine has no other user. Every later run of any playbook logs in as `MCP_SERVER_USER`. When you run `setup.yml` again, its first step still tries root, shows `UNREACHABLE` for it and moves on: that line is expected and means root is blocked.
+
 What it does, in order (tags in brackets, for `--tags` / `--skip-tags`):
 
 | Step | Does |
 |---|---|
 | Checks (always) | Settings present, an SSH public key on this machine |
-| `bootstrap` | Logs in as root once: creates the login user (wheel, passwordless sudo, your SSH key). Later runs can't log in as root, show it as unreachable and skip this, which is expected |
-| `system` | Blocks SSH logins as root. Installs EPEL, nginx (nginx.org), certbot, Java 17, git and the usual tools. Lets nginx reach the server under SELinux. Firewall: HTTP, HTTPS and SSH open; port 3100 stays closed, so visitors reach the server only through nginx |
+| `bootstrap` | Logs in as root once: creates the login user, `MCP_SERVER_USER` (wheel, passwordless sudo, your SSH key). Then logs in as that user and blocks SSH logins as root (`PermitRootLogin no`, checked with `sshd -T`). Root is blocked only after the new login and its sudo work, so a failed run can't lock you out |
+| `system` | Installs EPEL, nginx (nginx.org), certbot, Java 17, git and the usual tools. Lets nginx reach the server under SELinux. Firewall: HTTP, HTTPS and SSH open; port 3100 stays closed, so visitors reach the server only through nginx |
 | `app` | Maven 3.9.6 from archive.apache.org (checksum verified). The `whoisfreaks-mcp` user, `/opt/whoisfreaks-mcp` and the `whoisfreaks-mcp` service (256 MB to 1 GB heap, `app_java_opts`), enabled at boot |
 | `code` | Clones the repository into `~/code/whoisfreaks-mcp-server` |
 | `dns` | With `CF_DNS_API_TOKEN`: creates the DNS record and waits until it resolves. Without: checks that `MCP_HOSTNAME` resolves |
@@ -125,7 +127,7 @@ The next `deploy.yml` installs `master` again, so revert the commit there too.
 
 ## 8. Still open
 
-- `setup.yml` has not run against a real machine yet. Its deploy part ran in a sandbox and its nginx files were tested in an nginx container with the real server behind them; the system, app, DNS and certificate steps were only syntax-checked. The first real run is their test.
+- `setup.yml` ran end to end against a Rocky Linux 9 container (root login, the login user, root blocked, packages, Maven, the service, a real build and start), and its nginx config was tested with the real server behind it. Three steps could not run there and get their first test on the real machine: the firewall (firewalld doesn't run in a container), the DNS record and the Let's Encrypt certificate.
 - One machine means a restart is a few seconds of downtime, and the machine is a single point of failure. The Whois API's `ansible/` folder (rolling deploys behind a Cloudflare load balancer) is the model if this ever needs a second machine.
 - No monitoring agents or cron jobs are installed.
 

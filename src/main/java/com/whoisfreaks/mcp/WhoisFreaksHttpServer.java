@@ -47,6 +47,8 @@ import java.util.Set;
  *
  * Endpoints:
  *   POST /mcp     — MCP JSON-RPC endpoint
+ *   POST /        — the same endpoint, so the bare host name works as the server URL
+ *   GET  /        — a short description of the server, for someone opening it in a browser
  *   GET  /health  — liveness check, returns {"status":"ok"}
  *
  * Every tool call must carry the caller's own WhoisFreaks API key, in one of:
@@ -64,6 +66,8 @@ public class WhoisFreaksHttpServer {
 
     private static final String API_KEY = "whoisfreaksApiKey";
     private static final String MCP_PATH = "/mcp";
+    // The servlet mapping for exactly the context root ("/"), which serves the same endpoint.
+    private static final String ROOT_MAPPING = "";
     private static final int MAX_BODY_BYTES = 1024 * 1024;
     // Requests the stateless server handles; anything else gets a JSON-RPC "Method not found".
     private static final Set<String> METHODS = Set.of("initialize", "ping", "tools/list", "tools/call");
@@ -103,11 +107,13 @@ public class WhoisFreaksHttpServer {
         ServletHolder mcpHolder = new ServletHolder(transport);
         mcpHolder.setAsyncSupported(true);
         context.addServlet(mcpHolder, MCP_PATH);
+        context.addServlet(mcpHolder, ROOT_MAPPING);
         context.addServlet(new ServletHolder(new HealthServlet()), "/health");
 
         FilterHolder mcpFilter = new FilterHolder(new McpFilter());
         mcpFilter.setAsyncSupported(true);
         context.addFilter(mcpFilter, MCP_PATH, EnumSet.of(DispatcherType.REQUEST));
+        context.addFilter(mcpFilter, ROOT_MAPPING, EnumSet.of(DispatcherType.REQUEST));
 
         HttpConfiguration httpConfig = new HttpConfiguration();
         httpConfig.setSendServerVersion(false);
@@ -120,7 +126,8 @@ public class WhoisFreaksHttpServer {
         jetty.start();
 
         System.err.println("[whoisfreaks-mcp] Registered " + tools.size() + " tools.");
-        System.err.println("[whoisfreaks-mcp] Server started. Listening on http://0.0.0.0:" + port + MCP_PATH);
+        System.err.println("[whoisfreaks-mcp] Server started. Listening on http://0.0.0.0:" + port + MCP_PATH
+                + " (and on / as well)");
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.err.println("[whoisfreaks-mcp] Shutting down.");
@@ -178,6 +185,26 @@ public class WhoisFreaksHttpServer {
 
             if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
                 response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+                return;
+            }
+
+            // Someone opening the bare host name in a browser gets a description instead of an error.
+            // An MCP client asking for an event stream still gets the 405 it expects.
+            String accept = request.getHeader("Accept");
+            if ("GET".equalsIgnoreCase(request.getMethod()) && "/".equals(request.getRequestURI())
+                    && (accept == null || !accept.contains("text/event-stream"))) {
+                ObjectNode info = JSON.createObjectNode();
+                info.put("name", WhoisFreaksMcpServer.SERVER_NAME);
+                info.put("version", WhoisFreaksMcpServer.serverVersion());
+                info.put("description", "WhoisFreaks MCP server. Add this URL to an MCP client and send your "
+                        + "WhoisFreaks API key as 'Authorization: Bearer <key>', an 'X-API-Key' header, "
+                        + "or an '?apiKey=' query parameter.");
+                info.put("transport", "streamable-http");
+                info.put("documentation", "https://github.com/WhoisFreaks/whoisfreaks-mcp-server");
+                info.put("apiKey", "https://billing.whoisfreaks.com/signup");
+                response.setContentType("application/json");
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write(JSON.writeValueAsString(info));
                 return;
             }
 
@@ -243,13 +270,22 @@ public class WhoisFreaksHttpServer {
         }
     }
 
-    /** Replays a request body that the filter has already read. */
+    /**
+     * Replays a request body that the filter has already read, and presents every request as one
+     * for MCP_PATH: the SDK transport only answers requests whose URI ends with its endpoint, and
+     * the same endpoint is also served at the root.
+     */
     static class CachedBodyRequest extends HttpServletRequestWrapper {
         private final byte[] body;
 
         CachedBodyRequest(HttpServletRequest request, byte[] body) {
             super(request);
             this.body = body;
+        }
+
+        @Override
+        public String getRequestURI() {
+            return MCP_PATH;
         }
 
         @Override

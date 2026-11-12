@@ -3,7 +3,7 @@
 ## [2.0.0] - 2026-11-13
 
 ### Added
-- Hosted, multi-user HTTP mode (`--http` or `MCP_TRANSPORT=http`): a Streamable HTTP endpoint at `/mcp` and a `/health` check, served by the Java server itself
+- Hosted, multi-user HTTP mode (`--http` or `MCP_TRANSPORT=http`): a Streamable HTTP endpoint at the root and at `/mcp`, and a `/health` check, served by the Java server itself
 - In HTTP mode every request carries the caller's own WhoisFreaks API key (`Authorization: Bearer`, `X-API-Key` or `?apiKey=`); the server stores none
 - `ansible/` folder: sets up one machine (nginx, HTTPS, rate limiting) and deploys to it with automatic rollback
 

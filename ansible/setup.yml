@@ -1,7 +1,8 @@
 # Set up the machine as the MCP server and install the server on it (README.md, "Set up the machine"):
 #   ansible-playbook setup.yml
-# Logs in as bootstrap_user (root) once to create deploy_user, then blocks root logins; later runs log
-# in as deploy_user. Safe to run again: finished steps are left as they are, and the last part
+# The first run logs in as bootstrap_user (root) to create deploy_user (MCP_SERVER_USER in .env), then
+# logs in as deploy_user and, as its first step, blocks SSH logins as root. Later runs can't log in as root any more: they skip
+# that step and log in as deploy_user from the start. Safe to run again: finished steps are left as they are, and the last part
 # deploys the current master like deploy.yml does.
 # Each part has a tag (bootstrap, system, app, code, dns, nginx, deploy) for --tags / --skip-tags.
 
@@ -57,6 +58,21 @@
         content: "%wheel ALL=(ALL) NOPASSWD: ALL\n"
         mode: "0440"
         validate: visudo -cf %s
+
+# Runs with the bootstrap tag too, so root is never left open once the login user exists.
+- name: Block root logins, now that the login user can log in
+  hosts: mcp_server
+  gather_facts: false
+  tags: [bootstrap, system]
+  tasks:
+    - name: Check {{ deploy_user }} can log in and use sudo
+      ansible.builtin.command: "true"
+      become: true
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse SSH logins as root
+      ansible.builtin.import_tasks: tasks/setup_root_login.yml
 
 - name: Set up the machine
   hosts: mcp_server

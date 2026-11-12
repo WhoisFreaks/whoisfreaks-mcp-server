@@ -32,7 +32,10 @@ def server():
     ip = dotenv_value("MCP_SERVER_IP").strip()
     if not ip:
         sys.exit(f"inventory.py: set MCP_SERVER_IP in {ENV_FILE}, e.g. MCP_SERVER_IP=1.2.3.4")
-    return {"ansible_host": ip, "ansible_user": dotenv_value("MCP_SERVER_USER").strip() or "mcp"}
+    user = dotenv_value("MCP_SERVER_USER").strip() or "mcp"
+    # login_user keeps the name where setup.yml's first play logs in as root instead (ansible_user is
+    # overridden there).
+    return {"ansible_host": ip, "ansible_user": user, "login_user": user}
 
 
 def main():
