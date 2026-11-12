@@ -268,7 +268,14 @@ public class WhoisFreaksService {
 
     private String formatResponse(String title, int status, String body) {
         if (status == 401 || status == 403) {
-            return title + "\n\nUnauthorized (HTTP " + status + "). Check your WhoisFreaks API key and subscription status.";
+            // The API says why (invalid key, inactive subscription, IP address not whitelisted for
+            // the key), which is what the user needs to fix it.
+            String reason = apiMessage(body);
+            return title + "\n\nUnauthorized (HTTP " + status + ")."
+                    + (reason.isEmpty() ? "" : " The WhoisFreaks API said: " + reason)
+                    + " Check your WhoisFreaks API key and subscription status. If the key only allows"
+                    + " certain IP addresses, also allow the address these requests come from: the machine"
+                    + " this MCP server runs on (for the hosted server, the IP of mcp.whoisfreaks.com), not your own.";
         }
         if (status == 404) {
             return title + "\n\nNo data found (HTTP 404). The requested resource does not exist in the database.";
@@ -301,6 +308,15 @@ public class WhoisFreaksService {
             return title + "\n\n" + mapper.writerWithDefaultPrettyPrinter().writeValueAsString(node);
         } catch (Exception e) {
             return title + "\n\n" + body;
+        }
+    }
+
+    /** The "message" field of an API error body, or "" when there is none. */
+    private String apiMessage(String body) {
+        try {
+            return mapper.readTree(body).path("message").asText("").trim();
+        } catch (Exception e) {
+            return "";
         }
     }
 
