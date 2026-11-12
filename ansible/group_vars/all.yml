@@ -21,8 +21,11 @@ cf_dns_api_token: "{{ cfg.CF_DNS_API_TOKEN }}"    # Cloudflare: "Zone: DNS - Edi
 
 # Our server
 mcp_hostname: "{{ cfg.MCP_HOSTNAME }}"     # the address users connect to: https://<MCP_HOSTNAME>/mcp
-# The Cloudflare zone of mcp_hostname, for setup.yml's DNS record: CF_ZONE, or the hostname's last two labels.
-cf_zone: "{{ cfg.CF_ZONE or (mcp_hostname.split('.')[-2:] | join('.')) }}"
+# The Cloudflare zone of mcp_hostname, for setup.yml's DNS record: CF_ZONE (the zone's name or its
+# 32-character Zone ID), or the hostname's last two labels.
+cf_zone: "{{ cfg.CF_ZONE | trim or (mcp_hostname.split('.')[-2:] | join('.')) }}"
+cf_zone_is_id: "{{ cf_zone is match('^[0-9a-fA-F]{32}$') }}"
+cf_api_base: https://api.cloudflare.com/client/v4
 nginx_denied_ips: "{{ cfg.NGINX_DENIED_IPS.split(',') | map('trim') | select | list }}"  # IPs nginx refuses
 
 # The server is healthy when its /health answers node_check_status at both of these.

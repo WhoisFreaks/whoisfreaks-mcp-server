@@ -37,7 +37,7 @@ Every secret, and everything that names our server (its IP and hostname), lives 
 | `MCP_HOSTNAME` | The address users connect to, e.g. `mcp.example.com`. It must point at `MCP_SERVER_IP` | always |
 | `MCP_SERVER_USER` | The user Ansible logs in as; `setup.yml` creates it. Empty: `mcp` | optional |
 | `CF_DNS_API_TOKEN` | Secret. Cloudflare token with "Zone: DNS - Edit" and "Zone: Zone - Read". With it, `setup.yml` creates the DNS record. Empty: `setup.yml` doesn't touch DNS, and the record must exist before you run it | optional |
-| `CF_ZONE` | The Cloudflare zone of `MCP_HOSTNAME`. Empty: its last two labels (`mcp.example.com` → `example.com`) | optional |
+| `CF_ZONE` | The Cloudflare zone of `MCP_HOSTNAME`: its name (`example.com`) or its Zone ID. Empty: the hostname's last two labels (`mcp.example.com` → `example.com`) | optional |
 | `GIT_USERNAME`, `GIT_TOKEN` | Secret. The git user and access token the server pulls with. Leave both empty while the repository is public | optional |
 | `NGINX_DENIED_IPS` | IPs nginx refuses, comma-separated | optional |
 

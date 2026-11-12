@@ -1,12 +1,14 @@
 # setup.yml, DNS part. With CF_DNS_API_TOKEN: an A record MCP_HOSTNAME -> the machine's IP in Cloudflare,
-# DNS only (not proxied), then a wait until it resolves. Without it, DNS is yours to set: this only
+# DNS only (not proxied), then a wait until it resolves. CF_ZONE may be the zone's name or its ID (the
+# 32 characters shown as "Zone ID" on the zone's overview page); an ID is used as it is. Without it, DNS is yours to set: this only
 # checks that the name resolves, since Let's Encrypt needs it to.
 - name: Point {{ mcp_hostname }} at {{ ansible_host }} in Cloudflare
   when: cf_dns_api_token | length > 0
   block:
     - name: Find the {{ cf_zone }} zone in Cloudflare
+      when: not cf_zone_is_id
       ansible.builtin.uri:
-        url: https://api.cloudflare.com/client/v4/zones?name={{ cf_zone }}
+        url: "{{ cf_api_base }}/zones?name={{ cf_zone }}"
         headers:
           Authorization: "Bearer {{ cf_dns_api_token }}"
       register: cf_zone_read
@@ -18,12 +20,20 @@
     - name: Check the zone was found
       ansible.builtin.assert:
         that: cf_zone_read.json.result | default([]) | length == 1
-        fail_msg: "Couldn't find zone {{ cf_zone }}; the DNS token needs Zone Read and DNS Edit on it. Cloudflare said: {{ cf_zone_read.json.errors | default(cf_zone_read.msg | default('nothing')) }}"
+        fail_msg: >-
+          Couldn't find a zone named {{ cf_zone }}. Set CF_ZONE in ansible/.env to the zone's name (e.g. example.com) or
+          its Zone ID, and check the DNS token has Zone Read and DNS Edit on it. Cloudflare said:
+          {{ cf_zone_read.json.errors | default(cf_zone_read.msg | default('nothing')) }}
         quiet: true
+      when: not cf_zone_is_id
+
+    - name: Keep the zone's ID
+      ansible.builtin.set_fact:
+        cf_zone_id: "{{ cf_zone if cf_zone_is_id else cf_zone_read.json.result[0].id }}"
 
     - name: Read the DNS record for {{ mcp_hostname }}
       ansible.builtin.uri:
-        url: https://api.cloudflare.com/client/v4/zones/{{ cf_zone_read.json.result[0].id }}/dns_records?type=A&name={{ mcp_hostname }}
+        url: "{{ cf_api_base }}/zones/{{ cf_zone_id }}/dns_records?type=A&name={{ mcp_hostname }}"
         headers:
           Authorization: "Bearer {{ cf_dns_api_token }}"
       register: cf_record_read
@@ -35,13 +45,16 @@
     - name: Check the record could be read
       ansible.builtin.assert:
         that: cf_record_read.json.success | default(false)
-        fail_msg: "Couldn't read the DNS records of {{ cf_zone }}. Cloudflare said: {{ cf_record_read.json.errors | default(cf_record_read.msg | default('nothing')) }}"
+        fail_msg: >-
+          Couldn't read the DNS records of zone {{ cf_zone }}. Check that CF_ZONE is the zone {{ mcp_hostname }} is in and
+          that the DNS token has DNS Edit on it. Cloudflare said:
+          {{ cf_record_read.json.errors | default(cf_record_read.msg | default('nothing')) }}
         quiet: true
 
     - name: Create or fix the record {{ mcp_hostname }} -> {{ ansible_host }}
       ansible.builtin.uri:
         url: >-
-          https://api.cloudflare.com/client/v4/zones/{{ cf_zone_read.json.result[0].id }}/dns_records{{
+          {{ cf_api_base }}/zones/{{ cf_zone_id }}/dns_records{{
           '/' ~ cf_record_read.json.result[0].id if cf_record_read.json.result | length > 0 else '' }}
         method: "{{ 'PUT' if cf_record_read.json.result | length > 0 else 'POST' }}"
         headers:
