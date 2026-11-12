@@ -28,6 +28,24 @@
   changed_when: false
   become: true
 
+# "nginx -t" leaves an empty /run/nginx.pid behind when nginx isn't running. Created from this login
+# rather than by the service, it has the wrong SELinux label, so the service can't open it and its
+# start times out ("open() /var/run/nginx.pid failed (13: Permission denied)").
+- name: Check whether nginx is running
+  ansible.builtin.command: systemctl is-active nginx
+  register: nginx_active
+  failed_when: false
+  changed_when: false
+  check_mode: false
+  become: true
+
+- name: Remove the PID file the config test left behind
+  ansible.builtin.file:
+    path: /run/nginx.pid
+    state: absent
+  become: true
+  when: nginx_active.stdout | trim != 'active'
+
 - name: Start nginx
   ansible.builtin.systemd_service:
     name: nginx
