@@ -1,0 +1,81 @@
+# Settings for the playbooks. The secrets, and everything that names our servers (nodes, IPs and
+# hostnames), come from .env next to the playbooks (git ignores it; .env.example lists the names and
+# README.md explains them), or from environment variables of the same names when .env doesn't set
+# them. inventory.py reads the server (MCP_SERVER_IP, MCP_SERVER_USER) from the same file.
+env_file: "{{ playbook_dir }}/.env"
+dotenv: >-
+  {{ dict(lookup('ansible.builtin.file', env_file, errors='ignore') | default('', true)
+          | regex_findall('^[ \t]*(?:export[ \t]+)?(\w+)[ \t]*=[ \t]*(.*?)[ \t\r]*$', multiline=True)) }}
+dotenv_unquoted: >-
+  {{ dict(dotenv.keys() | zip(dotenv.values() | map('regex_replace', '^([\x27"])(.*)\1$', '\2'))) }}
+setting_names: [MCP_SERVER_IP, MCP_SERVER_USER, MCP_HOSTNAME, CF_DNS_API_TOKEN, CF_ZONE, GIT_USERNAME, GIT_TOKEN,
+                NGINX_DENIED_IPS]
+cfg: >-
+  {{ dict(setting_names | zip(query('ansible.builtin.env', *setting_names)))
+     | combine(dotenv_unquoted | dict2items | selectattr('value') | items2dict) }}
+
+# Secrets (all optional)
+git_username: "{{ cfg.GIT_USERNAME }}"            # git user the server pulls as (empty: the repo is public)
+git_token: "{{ cfg.GIT_TOKEN }}"                  # that user's access token
+cf_dns_api_token: "{{ cfg.CF_DNS_API_TOKEN }}"    # Cloudflare: "Zone: DNS - Edit", "Zone: Zone - Read" (empty: DNS is yours to set)
+
+# Our server
+mcp_hostname: "{{ cfg.MCP_HOSTNAME }}"     # the address users connect to: https://<MCP_HOSTNAME>/mcp
+# The Cloudflare zone of mcp_hostname, for setup.yml's DNS record: CF_ZONE, or the hostname's last two labels.
+cf_zone: "{{ cfg.CF_ZONE or (mcp_hostname.split('.')[-2:] | join('.')) }}"
+nginx_denied_ips: "{{ cfg.NGINX_DENIED_IPS.split(',') | map('trim') | select | list }}"  # IPs nginx refuses
+
+# The server is healthy when its /health answers node_check_status at both of these.
+public_check_url: "https://{{ mcp_hostname }}/health"  # from this machine, the way users reach it
+node_check_url: https://127.0.0.1/health               # on the server itself, through its nginx
+node_check_status: 200
+
+# Deployment
+git_host: github.com
+git_branch: master
+git_repos: ["."]  # under code_dir: the one repository
+code_dir: "/home/{{ ansible_user }}/code/whoisfreaks-mcp-server"
+maven_command: /opt/maven/bin/mvn
+java_home: /usr/lib/jvm/java-17-openjdk
+# The build's fat JAR. Its name carries the version from pom.xml, so it is found by pattern; the
+# "original-" JAR Maven leaves next to it (without the dependencies) doesn't match.
+build_dir: "{{ code_dir }}/target"
+build_jar_pattern: whoisfreaks-mcp-server-*.jar
+app_service: whoisfreaks-mcp
+app_user: whoisfreaks-mcp
+app_group: "{{ app_user }}"
+app_dir: /opt/whoisfreaks-mcp
+app_jar: "{{ app_dir }}/app.jar"
+app_previous_jar: "{{ app_dir }}/app.previous.jar"  # the version before the last deploy, for the rollback
+app_revision_file: "{{ app_dir }}/REVISION"         # the commit that runs, written by each deploy
+app_port: 3100
+app_java_opts: -Xms256m -Xmx1g
+app_start_timeout: 120   # seconds to wait for a new version to answer
+
+# New machines take the host key they present the first time; a changed key is still refused.
+ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new
+
+# ---- Setting up the machine (setup.yml) ----
+deploy_user: "{{ ansible_user }}"  # created on the machine: MCP_SERVER_USER, the user Ansible logs in as
+bootstrap_user: root               # the provider's first login, used once to create deploy_user
+# Public keys allowed to log in as deploy_user: those of the machine running ansible-playbook.
+setup_ssh_public_keys: >-
+  {{ query('ansible.builtin.file', *query('ansible.builtin.fileglob', lookup('ansible.builtin.env', 'HOME') ~ '/.ssh/id_*.pub')) }}
+
+setup_packages: [nginx, certbot, python3-certbot-nginx, java-17-openjdk-devel, git, tar, wget, unzip, zip, jq,
+                 sysstat, firewalld, python3-libselinux, policycoreutils-python-utils, chrony, htop, lsof, nano,
+                 vim-enhanced, tmux, net-tools, mtr]
+apache_archive: https://archive.apache.org/dist
+maven_version: 3.9.6
+
+# nginx in front of the server: requests per visitor IP, and how many more it lets through at once
+# before answering 429.
+nginx_rate_limit: 10r/s
+nginx_rate_burst: 40
+
+# The repository cloned into code_dir
+git_org_url: "https://{{ git_host }}/WhoisFreaks"
+git_clone_repos:
+  ".": whoisfreaks-mcp-server
+
+letsencrypt_email: ""  # empty: the certificate is requested without a contact email

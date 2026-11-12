@@ -1,0 +1,62 @@
+# Deploy the MCP server to the machine (README.md, "Deploy a new version"):
+#   ansible-playbook deploy.yml
+# Pulls and builds the new version while the running one keeps serving, then installs it and
+# restarts, which takes the server down for a few seconds. If the new version doesn't answer
+# /health, the previous one is put back (tasks/deploy_node.yml).
+
+- name: Deploy the MCP server
+  hosts: mcp_server
+  gather_facts: false
+  tasks:
+    - name: Stop in check mode
+      ansible.builtin.fail:
+        msg: deploy.yml can't run in check mode. status.yml shows the server's state and changes nothing.
+      when: ansible_check_mode
+
+    - name: Check the settings in .env
+      ansible.builtin.include_tasks: tasks/settings_check.yml
+
+    - name: Check the machine is set up
+      ansible.builtin.stat:
+        path: "{{ code_dir }}/.git"
+        get_checksum: false
+      register: node_code
+      ignore_unreachable: true
+
+    - name: Stop unless it is
+      ansible.builtin.assert:
+        that:
+          - not (node_code.unreachable | default(false))
+          - node_code.stat.exists | default(false)
+        fail_msg: >-
+          The machine isn't set up ({{ 'Ansible cannot log in as ' ~ ansible_user if node_code.unreachable | default(false)
+          else code_dir ~ ' has no code' }}). Run ansible-playbook setup.yml first. Nothing changed.
+        quiet: true
+
+    - name: Check the machine can read the git repository
+      ansible.builtin.include_tasks: tasks/git.yml
+      vars:
+        git_action: check
+
+    - name: Pull, build, install and restart
+      ansible.builtin.include_tasks: tasks/deploy_node.yml
+
+    - name: Check users can reach it at {{ public_check_url }}
+      ansible.builtin.uri:
+        url: "{{ public_check_url }}"
+        status_code: "{{ node_check_status }}"
+      register: public_check
+      until: public_check.status == node_check_status | int
+      retries: 6
+      delay: 5
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Say how it went
+      ansible.builtin.assert:
+        that: public_check.status == node_check_status | int
+        success_msg: "Deployed. {{ public_check_url }} answers {{ node_check_status }}."
+        fail_msg: >-
+          The new version runs on the machine, but {{ public_check_url }} answered
+          {{ public_check.status | default('nothing') }} from here ({{ public_check.msg | default('no message') }}).
+          Check DNS for {{ mcp_hostname }}, the certificate and the firewall.

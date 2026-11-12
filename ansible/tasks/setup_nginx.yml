@@ -1,0 +1,77 @@
+# setup.yml, nginx part: nginx.conf, the real-visitor-IP, logging and rate-limit settings, the site for
+# MCP_HOSTNAME (in front of the server on this machine), and a Let's Encrypt certificate for it.
+- name: Set up nginx
+  become: true
+  block:
+    - name: Write nginx.conf
+      ansible.builtin.template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        mode: "0644"
+        validate: nginx -t -c %s
+      register: nginx_main_conf
+
+    - name: Remove nginx's default site
+      ansible.builtin.file:
+        path: /etc/nginx/conf.d/default.conf
+        state: absent
+      register: nginx_default_site
+
+    - name: Read Cloudflare's edge IP ranges
+      ansible.builtin.uri:
+        url: https://api.cloudflare.com/client/v4/ips
+      register: cf_ips
+      failed_when: not (cf_ips.json.success | default(false))
+      delegate_to: localhost
+      become: false
+      check_mode: false
+
+    - name: Log visitors' own IPs for requests that come through Cloudflare
+      ansible.builtin.template:
+        src: cloudflare-realip.conf.j2
+        dest: /etc/nginx/cloudflare-realip.conf
+        mode: "0644"
+      vars:
+        cf_edge_ranges: "{{ cf_ips.json.result.ipv4_cidrs + cf_ips.json.result.ipv6_cidrs }}"
+      register: nginx_realip
+
+    - name: Keep API keys out of the logs
+      ansible.builtin.copy:
+        src: mcp-logging.conf
+        dest: /etc/nginx/mcp-logging.conf
+        mode: "0644"
+      register: nginx_logging
+
+    - name: Set the log format and the limit of {{ nginx_rate_limit }} per visitor
+      ansible.builtin.template:
+        src: mcp-http.conf.j2
+        dest: /etc/nginx/conf.d/mcp-http.conf
+        mode: "0644"
+      register: nginx_http
+
+    - name: Note whether nginx needs reloading
+      ansible.builtin.set_fact:
+        nginx_files_changed: >-
+          {{ nginx_main_conf.changed or nginx_default_site.changed or nginx_realip.changed or nginx_logging.changed
+             or nginx_http.changed }}
+
+    - name: Write the site and start nginx
+      ansible.builtin.include_tasks: setup_nginx_site.yml
+
+    - name: Get a certificate for {{ mcp_hostname }}
+      ansible.builtin.command: >-
+        certbot certonly --nginx -d {{ mcp_hostname }} --non-interactive --agree-tos
+        {{ ('-m ' ~ letsencrypt_email) if letsencrypt_email else '--register-unsafely-without-email' }}
+      args:
+        creates: /etc/letsencrypt/live/{{ mcp_hostname }}/fullchain.pem
+      register: certbot
+
+    - name: Add HTTPS to the site
+      ansible.builtin.include_tasks: setup_nginx_site.yml
+      when: certbot.changed
+
+    - name: Renew certificates automatically
+      ansible.builtin.systemd_service:
+        name: certbot-renew.timer
+        enabled: true
+        state: started

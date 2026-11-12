@@ -1,0 +1,49 @@
+# Show whether the MCP server is up, which commit runs and whether the machine can read the git
+# repository. Changes nothing.
+- name: Show the MCP server's state
+  hosts: mcp_server
+  gather_facts: false
+  tasks:
+    - name: Check the settings in .env
+      ansible.builtin.include_tasks: tasks/settings_check.yml
+
+    - name: Check {{ public_check_url }} from this machine
+      ansible.builtin.uri:
+        url: "{{ public_check_url }}"
+        status_code: "{{ node_check_status }}"
+      register: public_check
+      failed_when: false
+      check_mode: false
+      delegate_to: localhost
+
+    - name: Read the service's state
+      ansible.builtin.command: systemctl is-active {{ app_service }}
+      register: service_state
+      failed_when: false
+      changed_when: false
+      check_mode: false
+      ignore_unreachable: true
+
+    - name: Read which commit runs
+      ansible.builtin.slurp:
+        src: "{{ app_revision_file }}"
+      register: revision
+      failed_when: false
+      ignore_unreachable: true
+
+    - name: Show it
+      ansible.builtin.debug:
+        msg:
+          - >-
+            {{ public_check_url }}: {{ 'healthy' if public_check.status | default(0) == node_check_status | int
+               else 'NOT healthy (answered ' ~ public_check.status | default('nothing') ~ ')' }}
+          - >-
+            Service {{ app_service }}: {{ 'Ansible cannot log in as ' ~ ansible_user if service_state.unreachable | default(false)
+               else service_state.stdout | default('unknown', true) }}
+          - "Running: {{ (revision.content | b64decode | trim) if revision.content is defined else 'nothing deployed yet' }}"
+
+    - name: Check the machine can read the git repository
+      ansible.builtin.include_tasks: tasks/git.yml
+      vars:
+        git_action: check
+      when: not (service_state.unreachable | default(false))

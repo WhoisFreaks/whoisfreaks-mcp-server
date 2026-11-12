@@ -1,0 +1,7 @@
+# Stop before doing anything if .env lacks a setting the playbooks need. (inventory.py already
+# stopped the run if MCP_SERVER_IP is missing.)
+- name: Check the settings from .env
+  ansible.builtin.assert:
+    that: mcp_hostname | length > 0
+    fail_msg: Set MCP_HOSTNAME in ansible/.env (README.md, "Settings"). Nothing changed.
+    quiet: true

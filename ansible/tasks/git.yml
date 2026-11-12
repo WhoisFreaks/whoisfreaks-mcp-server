@@ -1,0 +1,77 @@
+# Run git on this node, with GIT_USERNAME / GIT_TOKEN from .env when they are set (a public
+# repository needs none):
+#   git_action: check   confirm git_host lets this node read git_branch in each of git_repos
+#                       (changes nothing)
+#   git_action: pull    in each of git_repos: stash local edits, check out git_branch and pull it
+#                       (fast-forward only: a branch that has diverged from the server stops the run)
+#   git_action: clone   clone git_branch of each of git_clone_repos that isn't there yet
+# The credentials sit in a temporary file only this user can read, which git reads through a
+# credential helper set in the environment (never on a command line or in git config), and the
+# file is removed afterwards even if git fails. Nothing runs in check mode.
+- name: Check the git credentials are both set or both empty
+  ansible.builtin.assert:
+    that: (git_username | length > 0) == (git_token | length > 0)
+    fail_msg: >-
+      Put both GIT_USERNAME and GIT_TOKEN (a {{ git_host }} access token that can read the repo) in ansible/.env, or
+      leave both empty while the repository is public.
+    quiet: true
+
+- name: Run git on the machine
+  when: not ansible_check_mode
+  block:
+    - name: Create a temporary file for the git credentials
+      ansible.builtin.tempfile:
+        suffix: .git-credentials
+      register: git_credentials_file
+
+    - name: Write the git credentials into it
+      ansible.builtin.copy:
+        content: >-
+          {{ ('https://' ~ git_username | urlencode | replace('/', '%2F') ~ ':' ~ git_token | urlencode | replace('/', '%2F')
+              ~ '@' ~ git_host ~ '\n') if git_username | length > 0 else '' }}
+        dest: "{{ git_credentials_file.path }}"
+        mode: "0600"
+      no_log: true
+
+    - name: Check {{ git_host }} lets the machine read {{ git_branch }}
+      ansible.builtin.command: git ls-remote --exit-code --heads origin {{ git_branch }}
+      args:
+        chdir: "{{ code_dir }}/{{ item }}"
+      environment: &git_env
+        GIT_TERMINAL_PROMPT: "0"
+        GIT_CONFIG_COUNT: "2"
+        GIT_CONFIG_KEY_0: credential.helper
+        GIT_CONFIG_VALUE_0: ""
+        GIT_CONFIG_KEY_1: credential.helper
+        GIT_CONFIG_VALUE_1: "store --file={{ git_credentials_file.path }}"
+      loop: "{{ git_repos }}"
+      changed_when: false
+      when: git_action == 'check'
+
+    - name: Pull {{ git_branch }} of whoisfreaks-mcp-server
+      ansible.builtin.shell: git stash && git checkout {{ git_branch }} && git pull --ff-only
+      args:
+        chdir: "{{ code_dir }}/{{ item }}"
+      environment: *git_env
+      loop: "{{ git_repos }}"
+      register: git_pull
+      changed_when: "'Already up to date' not in git_pull.stdout"
+      when: git_action == 'pull'
+
+    - name: Clone {{ git_branch }} of whoisfreaks-mcp-server into {{ code_dir }}
+      ansible.builtin.command: git clone --branch {{ git_branch }} {{ git_org_url }}/{{ item.value }}.git {{ repo_dir }}
+      args:
+        creates: "{{ repo_dir }}/.git"
+      environment: *git_env
+      vars:
+        repo_dir: "{{ code_dir if item.key == '.' else code_dir ~ '/' ~ item.key }}"
+      loop: "{{ git_clone_repos | dict2items }}"
+      loop_control:
+        label: "{{ item.value }}"
+      when: git_action == 'clone'
+  always:
+    - name: Remove the temporary git credentials file
+      ansible.builtin.file:
+        path: "{{ git_credentials_file.path }}"
+        state: absent
+      when: git_credentials_file.path is defined

@@ -1,0 +1,75 @@
+# setup.yml, app part: Maven from the Apache archive (checked against its SHA-512 sum), the user and
+# folder the server runs in, and its systemd service. Java comes with setup_packages. The service is
+# enabled but not started here: its JAR arrives with the deploy part.
+- name: Install Maven {{ maven_version }}
+  become: true
+  block:
+    - name: Download Maven {{ maven_version }}
+      ansible.builtin.get_url:
+        url: "{{ apache_archive }}/maven/maven-3/{{ maven_version }}/binaries/apache-maven-{{ maven_version }}-bin.tar.gz"
+        checksum: "sha512:{{ apache_archive }}/maven/maven-3/{{ maven_version }}/binaries/apache-maven-{{ maven_version }}-bin.tar.gz.sha512"
+        dest: /tmp/apache-maven-{{ maven_version }}-bin.tar.gz
+        mode: "0644"
+
+    - name: Unpack Maven into /opt
+      ansible.builtin.unarchive:
+        src: /tmp/apache-maven-{{ maven_version }}-bin.tar.gz
+        dest: /opt
+        remote_src: true
+        creates: /opt/apache-maven-{{ maven_version }}/bin/mvn
+
+    - name: Point /opt/maven at it
+      ansible.builtin.file:
+        src: /opt/apache-maven-{{ maven_version }}
+        dest: /opt/maven
+        state: link
+
+    - name: Put Maven on the PATH
+      ansible.builtin.copy:
+        src: maven.sh
+        dest: /etc/profile.d/maven.sh
+        mode: "0755"
+
+- name: Run the MCP server as a service
+  become: true
+  block:
+    - name: Create the {{ app_user }} user
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        system: true
+        home: "{{ app_dir }}"
+        create_home: false
+        shell: /sbin/nologin
+
+    - name: Create {{ app_dir }}
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0755"
+
+    - name: Install the {{ app_service }} service
+      ansible.builtin.template:
+        src: whoisfreaks-mcp.service.j2
+        dest: /etc/systemd/system/{{ app_service }}.service
+        mode: "0644"
+      register: app_unit
+
+    - name: Have it start at boot (the deploy part installs its JAR and starts it)
+      ansible.builtin.systemd_service:
+        name: "{{ app_service }}"
+        enabled: true
+        daemon_reload: "{{ app_unit.changed }}"
+
+    - name: Check whether its JAR is installed
+      ansible.builtin.stat:
+        path: "{{ app_jar }}"
+        get_checksum: false
+      register: installed_jar
+
+    - name: Restart it if its service settings changed
+      ansible.builtin.systemd_service:
+        name: "{{ app_service }}"
+        state: restarted
+      when: app_unit.changed and installed_jar.stat.exists

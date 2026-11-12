@@ -1,0 +1,99 @@
+# setup.yml, system part: OS check, root logins blocked, packages, SELinux and firewall.
+- name: Check the machine and the login
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == 'RedHat'
+      - ansible_distribution_major_version == '9'
+      - ansible_user == deploy_user
+    fail_msg: >-
+      setup.yml expects Rocky Linux 9 (found {{ ansible_distribution }} {{ ansible_distribution_version }}) and to
+      log in as {{ deploy_user }} (logs in as {{ ansible_user }}).
+    quiet: true
+
+- name: Block SSH logins as root
+  become: true
+  block:
+    - name: Add an sshd setting that refuses root
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/00-whoisfreaks-mcp.conf
+        content: |
+          # Written by ansible/setup.yml
+          PermitRootLogin no
+        mode: "0600"
+      register: sshd_setting
+
+    - name: Test the sshd config
+      ansible.builtin.command: sshd -t
+      changed_when: false
+      when: sshd_setting.changed
+
+    - name: Reload sshd
+      ansible.builtin.systemd_service:
+        name: sshd
+        state: reloaded
+      when: sshd_setting.changed
+
+    - name: Read the settings sshd uses
+      ansible.builtin.command: sshd -T
+      register: sshd_effective
+      changed_when: false
+      check_mode: false
+
+    - name: Check root can't log in
+      ansible.builtin.assert:
+        that: "'permitrootlogin no' in sshd_effective.stdout_lines"
+        fail_msg: sshd still allows root logins; check that /etc/ssh/sshd_config includes /etc/ssh/sshd_config.d/*.conf.
+        quiet: true
+      when: not ansible_check_mode
+
+- name: Install packages
+  become: true
+  block:
+    - name: Add EPEL (for certbot)
+      ansible.builtin.dnf:
+        name: epel-release
+        state: present
+
+    - name: Trust nginx.org's signing key
+      ansible.builtin.rpm_key:
+        key: https://nginx.org/keys/nginx_signing.key
+        state: present
+
+    - name: Add the nginx.org repository
+      ansible.builtin.copy:
+        src: nginx.repo
+        dest: /etc/yum.repos.d/nginx.repo
+        mode: "0644"
+
+    - name: Install the packages
+      ansible.builtin.dnf:
+        name: "{{ setup_packages }}"
+        state: present
+
+- name: Let nginx pass requests to the server under SELinux
+  ansible.posix.seboolean:
+    name: httpd_can_network_connect
+    state: true
+    persistent: true
+  become: true
+  when: ansible_selinux.status | default('disabled') == 'enabled'
+
+# The server listens on port {{ app_port }} on every address, and that port stays closed here: visitors
+# reach it only through nginx.
+- name: Set up the firewall
+  become: true
+  block:
+    - name: Run firewalld
+      ansible.builtin.systemd_service:
+        name: firewalld
+        enabled: true
+        state: started
+
+    - name: Open HTTP, HTTPS and SSH
+      ansible.posix.firewalld:
+        zone: public
+        service: "{{ item }}"
+        state: enabled
+        permanent: true
+        immediate: true
+      loop: [http, https, ssh]

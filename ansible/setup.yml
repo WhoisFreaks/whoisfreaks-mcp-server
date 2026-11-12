@@ -1,0 +1,98 @@
+# Set up the machine as the MCP server and install the server on it (README.md, "Set up the machine"):
+#   ansible-playbook setup.yml
+# Logs in as bootstrap_user (root) once to create deploy_user, then blocks root logins; later runs log
+# in as deploy_user. Safe to run again: finished steps are left as they are, and the last part
+# deploys the current master like deploy.yml does.
+# Each part has a tag (bootstrap, system, app, code, dns, nginx, deploy) for --tags / --skip-tags.
+
+- name: Check before setting up
+  hosts: mcp_server
+  gather_facts: false
+  tags: always
+  tasks:
+    - name: Check the settings in .env
+      ansible.builtin.include_tasks: tasks/settings_check.yml
+
+    - name: Check this machine has an SSH key for the login user
+      ansible.builtin.assert:
+        that: setup_ssh_public_keys | length > 0
+        fail_msg: setup.yml needs an SSH public key in ~/.ssh/id_*.pub on this machine. Nothing changed.
+        quiet: true
+
+- name: Create the login user, logging in as the provider's first user
+  hosts: mcp_server
+  gather_facts: false
+  become: true
+  tags: bootstrap
+  vars:
+    ansible_user: "{{ bootstrap_user }}"
+  tasks:
+    - name: Try logging in as {{ bootstrap_user }}
+      ansible.builtin.ping:
+      ignore_unreachable: true
+      register: bootstrap_login
+
+    - name: Skip this if {{ bootstrap_user }} can't log in (root logins are blocked once set up)
+      ansible.builtin.meta: end_host
+      when: bootstrap_login.unreachable | default(false)
+
+    - name: Create {{ deploy_user }}
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        groups: wheel
+        append: true
+        shell: /bin/bash
+
+    - name: Let this machine's SSH keys log in as {{ deploy_user }}
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ item }}"
+      loop: "{{ setup_ssh_public_keys }}"
+      loop_control:
+        label: "{{ item.split() | last }}"
+
+    - name: Let the wheel group use sudo without a password
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/wheel-nopasswd
+        content: "%wheel ALL=(ALL) NOPASSWD: ALL\n"
+        mode: "0440"
+        validate: visudo -cf %s
+
+- name: Set up the machine
+  hosts: mcp_server
+  tasks:
+    - name: System, packages, SELinux and firewall
+      ansible.builtin.import_tasks: tasks/setup_system.yml
+      tags: system
+
+    - name: Maven and the server's service
+      ansible.builtin.import_tasks: tasks/setup_app.yml
+      tags: app
+
+    - name: Clone the repository
+      ansible.builtin.import_tasks: tasks/git.yml
+      vars:
+        git_action: clone
+      tags: code
+
+    - name: DNS record
+      ansible.builtin.import_tasks: tasks/setup_dns.yml
+      tags: dns
+
+    - name: nginx and the certificate
+      ansible.builtin.import_tasks: tasks/setup_nginx.yml
+      tags: nginx
+
+- name: Install the server
+  hosts: mcp_server
+  gather_facts: false
+  tags: deploy
+  tasks:
+    - name: Say that check mode stops here
+      ansible.builtin.debug:
+        msg: In check mode, setup.yml doesn't build or install the server.
+      when: ansible_check_mode
+
+    - name: Pull, build, install and start
+      ansible.builtin.include_tasks: tasks/deploy_node.yml
+      when: not ansible_check_mode

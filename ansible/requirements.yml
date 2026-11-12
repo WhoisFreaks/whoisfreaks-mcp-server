@@ -1,0 +1,4 @@
+# Collections the playbooks use besides ansible-core:
+#   ansible-galaxy collection install -r requirements.yml
+collections:
+  - name: ansible.posix  # authorized_key, firewalld, seboolean (setup.yml)

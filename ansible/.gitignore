@@ -1,0 +1,2 @@
+# Real secrets stay local; .env.example lists the variable names.
+.env

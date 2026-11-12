@@ -1,0 +1,9 @@
+# Used only by the server blocks in conf.d/whoisfreaks-mcp.conf. Written by ansible/setup.yml.
+
+# The request line without its query string, so an ?apiKey=... never reaches a log.
+log_format  mcp_noquery  '$remote_addr - [$time_local] "$request_method $uri $server_protocol" '
+                         '$status $request_time $body_bytes_sent "$http_user_agent"';
+
+# Requests per visitor IP. The server itself has no limit, and connecting or listing tools needs no
+# API key.
+limit_req_zone $binary_remote_addr zone=mcp:10m rate={{ nginx_rate_limit }};

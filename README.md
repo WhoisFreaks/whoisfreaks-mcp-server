@@ -210,6 +210,8 @@ location / {
 
 The server is stateless (no MCP sessions), so you can run several containers behind a load balancer without sticky sessions.
 
+To set up a machine and deploy to it without Docker (nginx, HTTPS, rate limiting, rollback), see [`ansible/`](ansible/README.md).
+
 ---
 
 #### Verify Docker is working
