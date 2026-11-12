@@ -21,6 +21,10 @@ public class WhoisFreaksService {
 
     private static final String BASE = "https://api.whoisfreaks.com";
 
+    // Sent with every request so the API can tell that it comes from the MCP server: the caller's
+    // own IP address never reaches the API through this server, only this machine's does.
+    private static final String APP_PARAM = "&app=mcp-server";
+
     // Shared across instances: in HTTP mode a lightweight service is created per request (one per user API key).
     private static final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -252,7 +256,7 @@ public class WhoisFreaksService {
     private String call(String title, String url) {
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
+                    .uri(URI.create(url + APP_PARAM))
                     .timeout(Duration.ofSeconds(60))
                     .header("Accept", "application/json")
                     .GET()
