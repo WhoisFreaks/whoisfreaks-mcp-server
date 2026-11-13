@@ -12,10 +12,13 @@ jobs:
     outputs:
       should-release: ${{ steps.check.outputs.should-release }}
     steps:
+      # The message is passed through the environment, not pasted into the script: a message with
+      # quotes in it would otherwise break the script (or run as part of it).
       - name: Check commit message for 'new-release'
         id: check
+        env:
+          MSG: ${{ github.event.head_commit.message }}
         run: |
-          MSG="${{ github.event.head_commit.message }}"
           if echo "$MSG" | grep -q "new-release"; then
             echo "should-release=true" >> "$GITHUB_OUTPUT"
           else
@@ -96,3 +99,15 @@ jobs:
             whoisfreaks/mcp-server:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # 9. Keep the Docker Hub page in line with the README. Docker Hub cuts a long README off at
+      #    25,000 characters. Never fails the release: the image is already pushed by now.
+      - name: Update the Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        continue-on-error: true
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: whoisfreaks/mcp-server
+          short-description: WhoisFreaks MCP server - WHOIS, DNS, IP and SSL data for AI clients. Hosted at mcp.whoisfreaks.com
+          readme-filepath: ./README.md

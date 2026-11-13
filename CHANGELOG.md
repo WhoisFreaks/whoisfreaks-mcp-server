@@ -8,6 +8,8 @@
 - `ansible/` folder: sets up one machine (nginx, HTTPS, rate limiting) and deploys to it with automatic rollback
 
 ### Changed
+- Every request to the WhoisFreaks API carries `app=mcp-server`
+- A 401 from the API now includes the API's own reason (invalid key, IP address not whitelisted)
 - The Docker image runs HTTP mode by default and no longer includes Node or `mcp-proxy`
 - stdio mode is unchanged: it still reads `WHOISFREAKS_API_KEY`
 
