@@ -41,9 +41,9 @@
     - name: Pull, build, install and restart
       ansible.builtin.include_tasks: tasks/deploy_node.yml
 
-    - name: Check users can reach it at {{ public_check_url }}
+    - name: Check users can reach it
       ansible.builtin.uri:
-        url: "{{ public_check_url }}"
+        url: "https://{{ instance.hostname }}/health"
         status_code: "{{ node_check_status }}"
       register: public_check
       until: public_check.status == node_check_status | int
@@ -51,12 +51,21 @@
       delay: 5
       failed_when: false
       delegate_to: localhost
+      loop: "{{ app_instances }}"
+      loop_control:
+        loop_var: instance
+        label: "https://{{ instance.hostname }}/health"
 
     - name: Say how it went
       ansible.builtin.assert:
-        that: public_check.status == node_check_status | int
-        success_msg: "Deployed. {{ public_check_url }} answers {{ node_check_status }}."
+        that: unreachable | length == 0
+        success_msg: >-
+          Deployed. {{ app_instances | map(attribute='hostname') | map('regex_replace', '^(.*)$', 'https://\1/health')
+          | join(' and ') }} {{ 'answer' if app_instances | length > 1 else 'answers' }} {{ node_check_status }}.
         fail_msg: >-
-          The new version runs on the machine, but {{ public_check_url }} answered
-          {{ public_check.status | default('nothing') }} from here ({{ public_check.msg | default('no message') }}).
-          Check DNS for {{ mcp_hostname }}, the certificate and the firewall.
+          The new version runs on the machine, but from here
+          {% for check in unreachable %}https://{{ check.instance.hostname }}/health answered
+          {{ check.status | default('nothing') }} ({{ check.msg | default('no message') }}){{ '; ' if not loop.last }}{% endfor %}.
+          Check DNS for {{ unreachable | map(attribute='instance.hostname') | join(' and ') }}, the certificate and the firewall.
+      vars:
+        unreachable: "{{ public_check.results | rejectattr('status', 'equalto', node_check_status | int) | list }}"

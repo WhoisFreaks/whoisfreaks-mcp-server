@@ -1,6 +1,7 @@
 # setup.yml, app part: Maven from the Apache archive (checked against its SHA-512 sum), the user and
-# folder the server runs in, and its systemd service. Java comes with setup_packages. The service is
-# enabled but not started here: its JAR arrives with the deploy part.
+# folder the server runs in, and its systemd service, plus OAuth mode's when MCP_OAUTH_HOSTNAME is set.
+# Java comes with setup_packages. The services are enabled but not started here: their JAR arrives
+# with the deploy part.
 - name: Install Maven {{ maven_version }}
   become: true
   block:
@@ -73,3 +74,44 @@
         name: "{{ app_service }}"
         state: restarted
       when: app_unit.changed and installed_jar.stat.exists
+
+- name: Run the server in OAuth mode as a second service
+  become: true
+  when: oauth_enabled | bool
+  block:
+    - name: Create {{ oauth_env_dir }}, for root only
+      ansible.builtin.file:
+        path: "{{ oauth_env_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Write its settings to {{ oauth_env_file }}
+      ansible.builtin.template:
+        src: oauth.env.j2
+        dest: "{{ oauth_env_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+      register: oauth_env
+      no_log: true  # holds BILLING_SERVER_TOKEN
+
+    - name: Install the {{ oauth_app_service }} service
+      ansible.builtin.template:
+        src: whoisfreaks-mcp-oauth.service.j2
+        dest: /etc/systemd/system/{{ oauth_app_service }}.service
+        mode: "0644"
+      register: oauth_unit
+
+    - name: Have it start at boot (the deploy part installs the JAR and starts it)
+      ansible.builtin.systemd_service:
+        name: "{{ oauth_app_service }}"
+        enabled: true
+        daemon_reload: "{{ oauth_unit.changed }}"
+
+    - name: Restart it if its settings or service changed
+      ansible.builtin.systemd_service:
+        name: "{{ oauth_app_service }}"
+        state: restarted
+      when: (oauth_unit.changed or oauth_env.changed) and installed_jar.stat.exists

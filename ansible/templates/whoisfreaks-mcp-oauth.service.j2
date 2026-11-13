@@ -1,0 +1,26 @@
+# Written by ansible/setup.yml: the WhoisFreaks MCP server in OAuth mode, for the WhoisFreaks plugin in
+# ChatGPT and Codex (https://{{ mcp_oauth_hostname }}). The same JAR as {{ app_service }}. Its settings,
+# BILLING_SERVER_TOKEN among them, are in {{ oauth_env_file }}, which only root can read; systemd reads
+# it before starting the server.
+[Unit]
+Description=WhoisFreaks MCP server in OAuth mode (Streamable HTTP on port {{ oauth_app_port }})
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ app_user }}
+Group={{ app_group }}
+WorkingDirectory={{ app_dir }}
+Environment="PORT={{ oauth_app_port }}"
+EnvironmentFile={{ oauth_env_file }}
+ExecStart=/usr/bin/java {{ app_java_opts }} -jar {{ app_jar }} --oauth
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,5 +1,5 @@
-# Show whether the MCP server is up, which commit runs and whether the machine can read the git
-# repository. Changes nothing.
+# Show whether the MCP server (and OAuth mode's, when it is set up) is up, which commit runs and
+# whether the machine can read the git repository. Changes nothing.
 - name: Show the MCP server's state
   hosts: mcp_server
   gather_facts: false
@@ -7,17 +7,21 @@
     - name: Check the settings in .env
       ansible.builtin.include_tasks: tasks/settings_check.yml
 
-    - name: Check {{ public_check_url }} from this machine
+    - name: Check each server from this machine
       ansible.builtin.uri:
-        url: "{{ public_check_url }}"
+        url: "https://{{ instance.hostname }}/health"
         status_code: "{{ node_check_status }}"
       register: public_check
       failed_when: false
       check_mode: false
       delegate_to: localhost
+      loop: "{{ app_instances }}"
+      loop_control:
+        loop_var: instance
+        label: "https://{{ instance.hostname }}/health"
 
-    - name: Read the service's state
-      ansible.builtin.command: systemctl is-active {{ app_service }}
+    - name: Read the services' state
+      ansible.builtin.command: systemctl is-active {{ app_instances | map(attribute='service') | join(' ') }}
       register: service_state
       failed_when: false
       changed_when: false
@@ -31,16 +35,29 @@
       failed_when: false
       ignore_unreachable: true
 
-    - name: Show it
+    - name: Show whether users reach each server
       ansible.builtin.debug:
-        msg:
-          - >-
-            {{ public_check_url }}: {{ 'healthy' if public_check.status | default(0) == node_check_status | int
-               else 'NOT healthy (answered ' ~ public_check.status | default('nothing') ~ ')' }}
-          - >-
-            Service {{ app_service }}: {{ 'Ansible cannot log in as ' ~ ansible_user if service_state.unreachable | default(false)
-               else service_state.stdout | default('unknown', true) }}
-          - "Running: {{ (revision.content | b64decode | trim) if revision.content is defined else 'nothing deployed yet' }}"
+        msg: >-
+          https://{{ check.instance.hostname }}/health: {{ 'healthy' if check.status | default(0) == node_check_status | int
+             else 'NOT healthy (answered ' ~ check.status | default('nothing') ~ ')' }}
+      loop: "{{ public_check.results }}"
+      loop_control:
+        loop_var: check
+        label: "{{ check.instance.hostname }}"
+
+    - name: Show the services and which commit runs
+      ansible.builtin.debug:
+        msg: "{{ service_lines + [running_line] }}"
+      vars:
+        # systemctl prints one state per service, in the order asked
+        service_states: >-
+          {{ [('Ansible cannot log in as ' ~ ansible_user)] * (app_instances | length)
+             if service_state.unreachable | default(false)
+             else service_state.stdout_lines | default([]) + ['unknown'] * (app_instances | length) }}
+        service_lines: >-
+          {{ app_instances | map(attribute='service') | map('regex_replace', '^(.*)$', 'Service \1')
+             | zip(service_states) | map('join', ': ') | list }}
+        running_line: "Running: {{ (revision.content | b64decode | trim) if revision.content is defined else 'nothing deployed yet' }}"
 
     - name: Check the machine can read the git repository
       ansible.builtin.include_tasks: tasks/git.yml

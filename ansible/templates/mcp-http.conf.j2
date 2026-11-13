@@ -1,4 +1,5 @@
-# Used only by the server blocks in conf.d/whoisfreaks-mcp.conf. Written by ansible/setup.yml.
+# Used only by the server blocks in conf.d/whoisfreaks-mcp*.conf (the API-key server's site, and OAuth
+# mode's when it is set up). Written by ansible/setup.yml.
 
 # The request line without its query string, so an ?apiKey=... never reaches a log.
 log_format  mcp_noquery  '$remote_addr - [$time_local] "$request_method $uri $server_protocol" '

@@ -1,6 +1,6 @@
 # Cloudflare edge ranges, from Cloudflare's API (https://api.cloudflare.com/client/v4/ips) when setup.yml ran.
-# Included only by the server blocks in conf.d/whoisfreaks-mcp.conf. It matters only if {{ mcp_hostname }}
-# is proxied through Cloudflare: nginx then takes the visitor's IP from CF-Connecting-IP, so the access
+# Included only by the server blocks in conf.d/whoisfreaks-mcp*.conf. It matters only for a hostname
+# proxied through Cloudflare: nginx then takes the visitor's IP from CF-Connecting-IP, so the access
 # log and the rate limit use the visitor instead of Cloudflare. A request that doesn't come from these
 # ranges keeps its own IP, so with a DNS-only record this changes nothing.
 {% for range in cf_edge_ranges %}

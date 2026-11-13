@@ -5,3 +5,17 @@
     that: mcp_hostname | length > 0
     fail_msg: Set MCP_HOSTNAME in ansible/.env (README.md, "Settings"). Nothing changed.
     quiet: true
+
+- name: Check the settings OAuth mode needs, since MCP_OAUTH_HOSTNAME is set
+  ansible.builtin.assert:
+    that:
+      - mcp_oauth_hostname != mcp_hostname
+      - oauth_issuer is match('https?://')
+      - oauth_billing_url is match('https?://')
+      - oauth_billing_server_token | length > 0
+    fail_msg: >-
+      MCP_OAUTH_HOSTNAME is set, so OAuth mode needs OAUTH_ISSUER and BILLING_URL (http or https URLs) and
+      BILLING_SERVER_TOKEN in ansible/.env, and its own hostname, not MCP_HOSTNAME (README.md, "OAuth mode").
+      Nothing changed.
+    quiet: true
+  when: oauth_enabled | bool

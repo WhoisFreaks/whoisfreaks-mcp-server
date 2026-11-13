@@ -1,20 +1,20 @@
-# Write the site (with HTTPS once its certificate exists), test the nginx config and start or
-# reload nginx.
-- name: Check for {{ mcp_hostname }}'s certificate and certbot's SSL settings
+# Write one server's site (instance: an item of app_instances), with HTTPS once its certificate
+# exists, test the nginx config and start or reload nginx.
+- name: Check for {{ instance.hostname }}'s certificate and certbot's SSL settings
   ansible.builtin.stat:
     path: "{{ item }}"
     get_checksum: false
   loop:
-    - /etc/letsencrypt/live/{{ mcp_hostname }}/fullchain.pem
+    - /etc/letsencrypt/live/{{ instance.hostname }}/fullchain.pem
     - /etc/letsencrypt/options-ssl-nginx.conf
     - /etc/letsencrypt/ssl-dhparams.pem
   register: node_ssl_files
   become: true
 
-- name: Write the site for {{ mcp_hostname }}
+- name: Write the site for {{ instance.hostname }}
   ansible.builtin.template:
     src: node-site.conf.j2
-    dest: /etc/nginx/conf.d/whoisfreaks-mcp.conf
+    dest: /etc/nginx/conf.d/{{ instance.nginx_conf }}
     mode: "0644"
   vars:
     node_has_cert: "{{ node_ssl_files.results[0].stat.exists }}"

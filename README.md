@@ -192,7 +192,7 @@ docker run -d -p 3101:3100 \
   whoisfreaks/mcp-server:latest
 ```
 
-`deploy/docker-compose.yml` has the same as its `whoisfreaks-mcp-oauth` service. `ansible/` doesn't deploy OAuth mode yet.
+`deploy/docker-compose.yml` has the same as its `whoisfreaks-mcp-oauth` service. `ansible/` sets it up next to the API-key server when `MCP_OAUTH_HOSTNAME` is set ([ansible/README.md](ansible/README.md), section 9).
 
 ---
 
