@@ -22,3 +22,24 @@ services:
     restart: unless-stopped
     ports:
       - "3100:3100"
+
+  # OAuth mode, for the WhoisFreaks plugin in ChatGPT and Codex (README: "OAuth Mode"). Serve it on
+  # its own host name. The four variables come from the environment or a .env file next to this one.
+  # It only starts when asked for:
+  #   docker compose -f deploy/docker-compose.yml --profile oauth up -d
+  whoisfreaks-mcp-oauth:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: whoisfreaks/mcp-server:latest
+    container_name: whoisfreaks-mcp-oauth
+    restart: unless-stopped
+    profiles: ["oauth"]
+    ports:
+      - "3101:3100"
+    environment:
+      MCP_AUTH: oauth
+      OAUTH_ISSUER: ${OAUTH_ISSUER:-}
+      MCP_RESOURCE: ${MCP_RESOURCE:-}
+      BILLING_URL: ${BILLING_URL:-}
+      BILLING_SERVER_TOKEN: ${BILLING_SERVER_TOKEN:-}

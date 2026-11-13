@@ -20,6 +20,7 @@ Every user brings their **own WhoisFreaks API key** — the HTTP server stores n
 
 1. [Tools Reference (22 tools)](#tools-reference)
 2. [Hosted Server (no install)](#hosted-server-no-install)
+   - [OAuth Mode (ChatGPT and Codex)](#oauth-mode-chatgpt-and-codex)
 3. [Quick Start](#quick-start)
    - [⭐ Recommended — Docker](#-recommended--docker)
    - [Build from Source](#build-from-source)
@@ -156,6 +157,42 @@ https://mcp.whoisfreaks.com/?apiKey=YOUR_API_KEY
 ```
 
 Without a key the server still connects and lists its tools, but every tool call returns an error explaining how to add one. API usage is billed to the key you send.
+
+---
+
+## OAuth Mode (ChatGPT and Codex)
+
+ChatGPT and Codex connect to MCP servers only with OAuth, so the WhoisFreaks plugin for them uses a second instance of this server in OAuth mode, on its own host name (`https://mcp-oauth.whoisfreaks.com`). The API-key endpoint above keeps working exactly as before and never answers with a 401.
+
+Start it with `--oauth` (or `MCP_AUTH=oauth`; either one implies HTTP mode) and these variables:
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `OAUTH_ISSUER` | `https://auth.whoisfreaks.com` | The authorization server, which signs users in with their WhoisFreaks account |
+| `MCP_RESOURCE` | `https://mcp-oauth.whoisfreaks.com` | This server's resource identifier: access tokens must name it as their audience |
+| `BILLING_URL` | `https://billing-backend.whoisfreaks.com` | Where the server trades access tokens for API keys |
+| `BILLING_SERVER_TOKEN` | — | The shared secret for that trade (billing's `oauth.mcp-server-token`) |
+| `OAUTH_JWKS_URI` | `OAUTH_ISSUER/oauth2/jwks` (default) | The authorization server's signing keys |
+
+How it handles a request:
+
+1. **No access token, or an unusable one:** `401` with `WWW-Authenticate: Bearer resource_metadata="…", scope="lookups"`. Apps read `GET /.well-known/oauth-protected-resource` (plus `MCP_RESOURCE`'s path, if it has one) and sign the user in at the issuer. A token without the `lookups` scope gets `403`.
+2. **A valid token** (RS256, signed with one of the issuer's keys, this resource as audience, not expired) is traded for the account's API key at billing. The answer is cached for up to a minute, never past the token's expiry. Tokens never contain the key, and the key is never logged.
+3. **If billing no longer accepts the token** (the user disconnected, changed their password or signed out of all devices), the answer is `401` again, so the app asks them to connect. **If the account can't run lookups** (inactive, or no active key), tools return an error explaining why instead.
+
+API keys sent as headers or `?apiKey=` are ignored in this mode. A key restricted to listed IPs only works here if this server's address is on its list.
+
+```bash
+docker run -d -p 3101:3100 \
+  -e MCP_AUTH=oauth \
+  -e OAUTH_ISSUER=https://auth.whoisfreaks.com \
+  -e MCP_RESOURCE=https://mcp-oauth.whoisfreaks.com \
+  -e BILLING_URL=https://billing-backend.whoisfreaks.com \
+  -e BILLING_SERVER_TOKEN=... \
+  whoisfreaks/mcp-server:latest
+```
+
+`deploy/docker-compose.yml` has the same as its `whoisfreaks-mcp-oauth` service. `ansible/` doesn't deploy OAuth mode yet.
 
 ---
 
@@ -753,6 +790,7 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 |----------|----------|-------------|
 | `WHOISFREAKS_API_KEY` | stdio mode only | Your API key from [whoisfreaks.com/billing](https://whoisfreaks.com/billing). Without it the server still starts and lists its tools, but every tool call returns a `WHOISFREAKS_API_KEY is not set` error. Not used in HTTP mode, where each request carries the caller's own key. |
 | `MCP_TRANSPORT` | No | `http` to run the hosted HTTP server (same as the `--http` flag). The Docker image runs HTTP mode by default. |
+| `MCP_AUTH` | No | `oauth` to run [OAuth mode](#oauth-mode-chatgpt-and-codex) (same as the `--oauth` flag), which then needs `OAUTH_ISSUER`, `MCP_RESOURCE`, `BILLING_URL` and `BILLING_SERVER_TOKEN`. |
 | `PORT` | No | HTTP port. Default: `3100`. |
 
 ---

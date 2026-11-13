@@ -3,6 +3,11 @@ package com.whoisfreaks.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.whoisfreaks.mcp.oauth.AccessTokenVerifier;
+import com.whoisfreaks.mcp.oauth.BillingApiKeys;
+import com.whoisfreaks.mcp.oauth.OAuthFilter;
+import com.whoisfreaks.mcp.oauth.OAuthSettings;
+import com.whoisfreaks.mcp.oauth.ProtectedResourceMetadataServlet;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpStatelessServerFeatures;
@@ -61,10 +66,20 @@ import java.util.Set;
  * Connecting and listing tools work without a key; a tool call without one returns an error that
  * tells the user how to add it. (Answering 401 instead makes MCP clients start an OAuth flow that
  * this server does not offer, which hides the real problem from the user.)
+ *
+ * OAuth mode (--oauth, or MCP_AUTH=oauth) is the other way round, for the WhoisFreaks plugin in
+ * ChatGPT and Codex, which can only sign users in with OAuth. It runs on its own host name, so
+ * clients sending API keys never get its 401s:
+ *   - every request needs an access token from the authorization server, else 401 with a challenge
+ *     ({@link OAuthFilter}); the token is traded for the account's API key at billing
+ *   - GET /.well-known/oauth-protected-resource (plus MCP_RESOURCE's path, if any) describes it (RFC 9728)
+ * API keys sent the other ways are ignored. Settings come from the environment: see {@link OAuthSettings}.
  */
 public class WhoisFreaksHttpServer {
 
     private static final String API_KEY = "whoisfreaksApiKey";
+    // OAuth mode: why the connected account can't run lookups, or "".
+    private static final String KEY_PROBLEM = "whoisfreaksKeyProblem";
     private static final String MCP_PATH = "/mcp";
     // The servlet mapping for exactly the context root ("/"), which serves the same endpoint.
     private static final String ROOT_MAPPING = "";
@@ -80,17 +95,26 @@ public class WhoisFreaksHttpServer {
             - an '?apiKey=<key>' query parameter on the server URL
             Get a free key at https://billing.whoisfreaks.com/signup""";
 
-    public static void run(int port) throws Exception {
+    /** Serves until the process stops; {@code oauth} is null for the API-key mode. */
+    public static void run(int port, OAuthSettings oauth) throws Exception {
+        start(port, oauth).join();
+    }
+
+    static Server start(int port, OAuthSettings oauth) throws Exception {
         HttpServletStatelessServerTransport transport = HttpServletStatelessServerTransport.builder()
                 .objectMapper(WhoisFreaksMcpServer.objectMapper())
                 .messageEndpoint(MCP_PATH)
-                .contextExtractor(request -> McpTransportContext.create(Map.of(API_KEY, extractApiKey(request))))
+                .contextExtractor(request -> oauth == null
+                        ? McpTransportContext.create(Map.of(API_KEY, extractApiKey(request)))
+                        : McpTransportContext.create(Map.of(
+                                API_KEY, attribute(request, OAuthFilter.API_KEY_ATTRIBUTE),
+                                KEY_PROBLEM, attribute(request, OAuthFilter.KEY_PROBLEM_ATTRIBUTE))))
                 .build();
 
         List<McpStatelessServerFeatures.SyncToolSpecification> tools = WhoisFreaksMcpServer
                 .toolSpecs(context -> new WhoisFreaksService((String) context.get(API_KEY)))
                 .stream()
-                .map(WhoisFreaksHttpServer::requireApiKey)
+                .map(oauth == null ? WhoisFreaksHttpServer::requireApiKey : WhoisFreaksHttpServer::requireUsableAccount)
                 .toList();
 
         McpStatelessSyncServer mcp = McpServer.sync(transport)
@@ -110,10 +134,20 @@ public class WhoisFreaksHttpServer {
         context.addServlet(mcpHolder, ROOT_MAPPING);
         context.addServlet(new ServletHolder(new HealthServlet()), "/health");
 
-        FilterHolder mcpFilter = new FilterHolder(new McpFilter());
+        FilterHolder mcpFilter = new FilterHolder(new McpFilter(oauth != null));
         mcpFilter.setAsyncSupported(true);
         context.addFilter(mcpFilter, MCP_PATH, EnumSet.of(DispatcherType.REQUEST));
         context.addFilter(mcpFilter, ROOT_MAPPING, EnumSet.of(DispatcherType.REQUEST));
+
+        if (oauth != null) {
+            // After McpFilter, so its answers get the CORS headers and preflights skip the token check.
+            FilterHolder oauthFilter = new FilterHolder(
+                    new OAuthFilter(new AccessTokenVerifier(oauth), new BillingApiKeys(oauth), oauth));
+            oauthFilter.setAsyncSupported(true);
+            context.addFilter(oauthFilter, MCP_PATH, EnumSet.of(DispatcherType.REQUEST));
+            context.addFilter(oauthFilter, ROOT_MAPPING, EnumSet.of(DispatcherType.REQUEST));
+            context.addServlet(new ServletHolder(new ProtectedResourceMetadataServlet(oauth)), oauth.metadataPath());
+        }
 
         HttpConfiguration httpConfig = new HttpConfiguration();
         httpConfig.setSendServerVersion(false);
@@ -126,15 +160,19 @@ public class WhoisFreaksHttpServer {
         jetty.start();
 
         System.err.println("[whoisfreaks-mcp] Registered " + tools.size() + " tools.");
-        System.err.println("[whoisfreaks-mcp] Server started. Listening on http://0.0.0.0:" + port + MCP_PATH
-                + " (and on / as well)");
+        System.err.println("[whoisfreaks-mcp] Server started. Listening on http://0.0.0.0:" + connector.getLocalPort()
+                + MCP_PATH + " (and on / as well)");
+        if (oauth != null) {
+            System.err.println("[whoisfreaks-mcp] OAuth mode: resource " + oauth.resource() + ", issuer " + oauth.issuer()
+                    + ", metadata at " + oauth.metadataUrl());
+        }
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.err.println("[whoisfreaks-mcp] Shutting down.");
             try { mcp.close(); } catch (Exception ignored) {}
         }));
 
-        jetty.join();
+        return jetty;
     }
 
     /** Makes a tool answer with setup instructions instead of calling the API when the request has no key. */
@@ -146,6 +184,23 @@ public class WhoisFreaksHttpServer {
             }
             return spec.callHandler().apply(context, request);
         });
+    }
+
+    /** OAuth mode: makes a tool say why the connected account can't run lookups instead of calling the API. */
+    private static McpStatelessServerFeatures.SyncToolSpecification requireUsableAccount(
+            McpStatelessServerFeatures.SyncToolSpecification spec) {
+        return new McpStatelessServerFeatures.SyncToolSpecification(spec.tool(), (context, request) -> {
+            String problem = (String) context.get(KEY_PROBLEM);
+            if (!problem.isEmpty()) {
+                return new McpSchema.CallToolResult(List.of(new McpSchema.TextContent(problem)), true);
+            }
+            return spec.callHandler().apply(context, request);
+        });
+    }
+
+    private static String attribute(HttpServletRequest request, String name) {
+        Object value = request.getAttribute(name);
+        return value instanceof String text ? text : "";
     }
 
     /** Returns the caller's API key from the Authorization header, X-API-Key header, or apiKey query parameter. */
@@ -171,6 +226,12 @@ public class WhoisFreaksHttpServer {
      */
     static class McpFilter implements Filter {
 
+        private final boolean oauth;
+
+        McpFilter(boolean oauth) {
+            this.oauth = oauth;
+        }
+
         @Override
         public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
                 throws IOException, ServletException {
@@ -181,7 +242,8 @@ public class WhoisFreaksHttpServer {
             response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
             response.setHeader("Access-Control-Allow-Headers",
                     "Authorization, Content-Type, Accept, X-API-Key, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID");
-            response.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+            // OAuth mode: browser-based clients read the challenge from WWW-Authenticate.
+            response.setHeader("Access-Control-Expose-Headers", oauth ? "Mcp-Session-Id, WWW-Authenticate" : "Mcp-Session-Id");
 
             if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
                 response.setStatus(HttpServletResponse.SC_NO_CONTENT);
@@ -196,12 +258,19 @@ public class WhoisFreaksHttpServer {
                 ObjectNode info = JSON.createObjectNode();
                 info.put("name", WhoisFreaksMcpServer.SERVER_NAME);
                 info.put("version", WhoisFreaksMcpServer.serverVersion());
-                info.put("description", "WhoisFreaks MCP server. Add this URL to an MCP client and send your "
-                        + "WhoisFreaks API key as 'Authorization: Bearer <key>', an 'X-API-Key' header, "
-                        + "or an '?apiKey=' query parameter.");
-                info.put("transport", "streamable-http");
-                info.put("documentation", "https://github.com/WhoisFreaks/whoisfreaks-mcp-server");
-                info.put("apiKey", "https://billing.whoisfreaks.com/signup");
+                if (oauth) {
+                    info.put("description", "WhoisFreaks MCP server for the WhoisFreaks plugin in ChatGPT and Codex. "
+                            + "It signs users in with OAuth: install the plugin and connect your WhoisFreaks account.");
+                    info.put("transport", "streamable-http");
+                    info.put("documentation", "https://github.com/WhoisFreaks/whoisfreaks-mcp-server");
+                } else {
+                    info.put("description", "WhoisFreaks MCP server. Add this URL to an MCP client and send your "
+                            + "WhoisFreaks API key as 'Authorization: Bearer <key>', an 'X-API-Key' header, "
+                            + "or an '?apiKey=' query parameter.");
+                    info.put("transport", "streamable-http");
+                    info.put("documentation", "https://github.com/WhoisFreaks/whoisfreaks-mcp-server");
+                    info.put("apiKey", "https://billing.whoisfreaks.com/signup");
+                }
                 response.setContentType("application/json");
                 response.setCharacterEncoding("UTF-8");
                 response.getWriter().write(JSON.writeValueAsString(info));

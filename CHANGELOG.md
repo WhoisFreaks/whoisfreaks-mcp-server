@@ -6,6 +6,11 @@
 - `server.json` for the Official MCP Registry (`io.github.WhoisFreaks/whoisfreaks-mcp-server`), listing the hosted server and the Docker image
 - The release workflow publishes every release to the registry, and can be run by hand to publish the current version without a release
 - The Docker image carries the `io.modelcontextprotocol.server.name` label the registry checks
+- OAuth mode (`--oauth` or `MCP_AUTH=oauth`) for the WhoisFreaks plugin in ChatGPT and Codex, which can only sign users in with OAuth. Every request needs an access token from the WhoisFreaks authorization server, else 401 with a challenge pointing to `/.well-known/oauth-protected-resource`; a valid token is traded for the account's API key at billing (cached for up to a minute). Configured by `OAUTH_ISSUER`, `MCP_RESOURCE`, `BILLING_URL` and `BILLING_SERVER_TOKEN`. The API-key mode is unchanged
+- A `whoisfreaks-mcp-oauth` service in `deploy/docker-compose.yml`, and tests (`mvn test`)
+
+### Not included
+- Ansible deployment of OAuth mode: `ansible/` still sets up and deploys the API-key server only. OAuth mode needs its own systemd service (with `BILLING_SERVER_TOKEN` as a secret), nginx site, certificate and DNS record for its host name, and the deploy's health checks and rollback for it
 
 ## [2.1.0] - 2026-11-13
 
