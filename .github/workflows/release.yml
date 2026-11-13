@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+  # Run by hand (Actions → Release → Run workflow) to list the current version on the
+  # Official MCP Registry without making a release: only the publish-registry job runs.
+  workflow_dispatch:
 
 jobs:
   # ── Step 1: Gate — only proceed if commit message contains 'new-release' ──
@@ -111,3 +114,67 @@ jobs:
           repository: whoisfreaks/mcp-server
           short-description: WhoisFreaks MCP server - WHOIS, DNS, IP and SSL data for AI clients. Hosted at mcp.whoisfreaks.com
           readme-filepath: ./README.md
+
+  # ── Step 3: List the release on the Official MCP Registry ────────────────
+  #    Logs in with GitHub OIDC, which proves the workflow runs in the WhoisFreaks
+  #    organization (the io.github.WhoisFreaks namespace), so it needs no secret.
+  publish-registry:
+    needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for the OIDC login
+      contents: read
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.9
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      # A pinned release, checked against its Sigstore signature before it runs.
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+          rm -f "$archive" "$archive.sigstore.json"
+
+      # The version comes from pom.xml. The registry accepts the Docker package only if
+      # the image has the io.modelcontextprotocol.server.name label, so a version whose
+      # image was built before the label existed is listed with the hosted server only.
+      - name: Prepare server.json
+        run: |
+          set -euo pipefail
+          VERSION=$(python3 -c "import xml.etree.ElementTree as E; print(E.parse('pom.xml').getroot().find('{http://maven.apache.org/POM/4.0.0}version').text)")
+          IMAGE="docker.io/whoisfreaks/mcp-server:${VERSION}"
+          jq --arg v "$VERSION" --arg image "$IMAGE" \
+            '.version = $v | .packages |= map(if .registryType == "oci" then .identifier = $image else . end)' \
+            server.json > server.tmp && mv server.tmp server.json
+          LABEL=$(docker buildx imagetools inspect "$IMAGE" --format '{{json .Image}}' \
+            | jq -r '(if has("config") then .config else .["linux/amd64"].config end).Labels["io.modelcontextprotocol.server.name"] // ""')
+          if [ "$LABEL" != "$(jq -r .name server.json)" ]; then
+            echo "::warning::$IMAGE has no io.modelcontextprotocol.server.name label, so only the hosted server is listed."
+            jq 'del(.packages)' server.json > server.tmp && mv server.tmp server.json
+          fi
+          cat server.json
+
+      - name: Validate server.json
+        run: ./mcp-publisher validate
+
+      - name: Log in to the MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to the MCP Registry
+        run: ./mcp-publisher publish

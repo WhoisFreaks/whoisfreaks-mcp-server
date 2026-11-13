@@ -1,0 +1,68 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.WhoisFreaks/whoisfreaks-mcp-server",
+  "title": "WhoisFreaks",
+  "description": "WHOIS, DNS, IP geolocation, SSL and domain intelligence from the WhoisFreaks API.",
+  "version": "2.1.0",
+  "websiteUrl": "https://whoisfreaks.com/integrations/third-party/mcp-server",
+  "repository": {
+    "url": "https://github.com/WhoisFreaks/whoisfreaks-mcp-server",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.whoisfreaks.com/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Your WhoisFreaks API key as a bearer token. Get one free at https://billing.whoisfreaks.com/signup",
+          "isRequired": true,
+          "isSecret": true,
+          "value": "Bearer {api_key}",
+          "variables": {
+            "api_key": {
+              "description": "Your WhoisFreaks API key",
+              "isRequired": true,
+              "isSecret": true
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "docker.io/whoisfreaks/mcp-server:2.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--entrypoint",
+          "value": "java"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "-jar"
+        },
+        {
+          "type": "positional",
+          "value": "app.jar"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "WHOISFREAKS_API_KEY",
+          "description": "Your WhoisFreaks API key. Get one free at https://billing.whoisfreaks.com/signup",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

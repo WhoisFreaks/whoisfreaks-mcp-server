@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `server.json` for the Official MCP Registry (`io.github.WhoisFreaks/whoisfreaks-mcp-server`), listing the hosted server and the Docker image
+- The release workflow publishes every release to the registry, and can be run by hand to publish the current version without a release
+- The Docker image carries the `io.modelcontextprotocol.server.name` label the registry checks
+
 ## [2.1.0] - 2026-11-13
 
 Brought in line with the WhoisFreaks OpenAPI spec (version 2026-11-13.3).

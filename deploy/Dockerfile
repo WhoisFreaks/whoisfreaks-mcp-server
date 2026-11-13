@@ -31,6 +31,9 @@ RUN mvn clean package -q -DskipTests && \
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
+# Proves to the Official MCP Registry that this image belongs to the server in server.json.
+LABEL io.modelcontextprotocol.server.name="io.github.WhoisFreaks/whoisfreaks-mcp-server"
+
 # Create a non-root system user for security
 RUN groupadd --system whoisfreaks && \
     useradd --system --no-create-home --shell /usr/sbin/nologin --gid whoisfreaks whoisfreaks
