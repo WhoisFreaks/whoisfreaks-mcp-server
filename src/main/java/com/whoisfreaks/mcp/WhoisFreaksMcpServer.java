@@ -2,6 +2,7 @@ package com.whoisfreaks.mcp;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.whoisfreaks.mcp.tools.AccountTools;
 import com.whoisfreaks.mcp.tools.DnsTools;
 import com.whoisfreaks.mcp.tools.DomainTools;
 import com.whoisfreaks.mcp.tools.IpTools;
@@ -25,13 +26,15 @@ import java.util.function.Function;
 /**
  * WhoisFreaks MCP Server.
  *
- * Exposes all WhoisFreaks public APIs as MCP tools:
- *   WHOIS:   liveWhoisLookup, whoisHistory, reverseWhoisLookup
+ * Exposes the WhoisFreaks lookup APIs of the published OpenAPI spec as MCP tools:
+ *   WHOIS:   liveWhoisLookup, bulkWhoisLookup, whoisHistory, reverseWhoisLookup
  *   IP/ASN:  ipWhoisLookup, asnWhoisLookup
- *   DNS:     dnsLookup, dnsHistory, reverseDnsLookup
- *   IP:      ipGeolocation, ipSecurity
- *   Domain:  domainAvailability, subdomainLookup, domainDiscovery
+ *   DNS:     dnsLookup, bulkDnsLookup, dnsHistory, reverseDnsLookup
+ *   IP:      ipGeolocation, bulkIpGeolocation, ipSecurity, bulkIpSecurity
+ *   Domain:  domainAvailability, bulkDomainAvailability, subdomainLookup, domainDiscovery,
+ *            subdomainTyposquatting, domainReputation
  *   SSL:     sslLookup
+ *   Account: apiKeyUsage
  *
  * Two modes:
  *   stdio (default)       — single user; the API key comes from the WHOISFREAKS_API_KEY
@@ -63,12 +66,14 @@ public class WhoisFreaksMcpServer {
     static List<McpStatelessServerFeatures.SyncToolSpecification> toolSpecs(
             Function<McpTransportContext, WhoisFreaksService> services) {
         List<McpStatelessServerFeatures.SyncToolSpecification> allTools = new ArrayList<>();
-        allTools.addAll(new WhoisTools(services).specs());     // liveWhoisLookup, whoisHistory, reverseWhoisLookup
+        allTools.addAll(new WhoisTools(services).specs());     // liveWhoisLookup, bulkWhoisLookup, whoisHistory, reverseWhoisLookup
         allTools.addAll(new IpWhoisTools(services).specs());   // ipWhoisLookup, asnWhoisLookup
-        allTools.addAll(new DnsTools(services).specs());       // dnsLookup, dnsHistory, reverseDnsLookup
-        allTools.addAll(new IpTools(services).specs());        // ipGeolocation, ipSecurity
-        allTools.addAll(new DomainTools(services).specs());    // domainAvailability, subdomainLookup, domainDiscovery
+        allTools.addAll(new DnsTools(services).specs());       // dnsLookup, bulkDnsLookup, dnsHistory, reverseDnsLookup
+        allTools.addAll(new IpTools(services).specs());        // ipGeolocation, bulkIpGeolocation, ipSecurity, bulkIpSecurity
+        allTools.addAll(new DomainTools(services).specs());    // domainAvailability, bulkDomainAvailability, subdomainLookup,
+                                                               // domainDiscovery, subdomainTyposquatting, domainReputation
         allTools.addAll(new SslTools(services).specs());       // sslLookup
+        allTools.addAll(new AccountTools(services).specs());   // apiKeyUsage
         return allTools.stream().map(WhoisFreaksMcpServer::withBehaviorInfo).toList();
     }
 
@@ -151,25 +156,42 @@ public class WhoisFreaksMcpServer {
             Behavior: read-only. Makes one request to the WhoisFreaks API using your WhoisFreaks API key \
             (the WHOISFREAKS_API_KEY environment variable, or on the hosted server the key sent with the \
             request) and uses that account's API credits; nothing is created or changed. \
-            If the call fails, the result is a short message instead of data, for example: key missing \
-            or invalid, no data found (HTTP 404), rate limit reached (HTTP 429), or plan or credit limit \
-            reached (HTTP 412/413).""";
+            If the call fails, the result is a short message instead of data, for example: key invalid, \
+            or plan or credits used up (HTTP 401), domain extension not supported (HTTP 403), no data \
+            found (HTTP 404), or rate limit reached (HTTP 429).""";
+
+    /** Tools whose behaviour differs from BEHAVIOR_NOTE. */
+    private static final Map<String, String> BEHAVIOR_NOTES = Map.of(
+            "apiKeyUsage", """
+
+            Behavior: read-only. Reads the usage of your WhoisFreaks API key (the WHOISFREAKS_API_KEY \
+            environment variable, or on the hosted server the key sent with the request); it looks \
+            nothing up and changes nothing. If the key is invalid the result is a short message \
+            (HTTP 401) instead of data.""");
 
     private static final Map<String, String> TITLES = Map.ofEntries(
             Map.entry("liveWhoisLookup", "Live WHOIS lookup"),
+            Map.entry("bulkWhoisLookup", "Bulk WHOIS lookup"),
             Map.entry("whoisHistory", "WHOIS history"),
             Map.entry("reverseWhoisLookup", "Reverse WHOIS search"),
             Map.entry("ipWhoisLookup", "IP WHOIS lookup"),
             Map.entry("asnWhoisLookup", "ASN WHOIS lookup"),
             Map.entry("dnsLookup", "DNS lookup"),
+            Map.entry("bulkDnsLookup", "Bulk DNS lookup"),
             Map.entry("dnsHistory", "DNS history"),
             Map.entry("reverseDnsLookup", "Reverse DNS search"),
             Map.entry("ipGeolocation", "IP geolocation"),
-            Map.entry("ipSecurity", "IP security check"),
+            Map.entry("bulkIpGeolocation", "Bulk IP geolocation"),
+            Map.entry("ipSecurity", "IP reputation check"),
+            Map.entry("bulkIpSecurity", "Bulk IP reputation check"),
             Map.entry("domainAvailability", "Domain availability check"),
+            Map.entry("bulkDomainAvailability", "Bulk domain availability check"),
             Map.entry("subdomainLookup", "Subdomain lookup"),
-            Map.entry("domainDiscovery", "Domain discovery search"),
-            Map.entry("sslLookup", "SSL certificate lookup"));
+            Map.entry("domainDiscovery", "Domain typosquatting search"),
+            Map.entry("subdomainTyposquatting", "Subdomain typosquatting search"),
+            Map.entry("domainReputation", "Domain reputation check"),
+            Map.entry("sslLookup", "SSL certificate lookup"),
+            Map.entry("apiKeyUsage", "API key usage"));
 
     /**
      * Adds a human-readable title, MCP tool annotations (read-only, non-destructive,
@@ -182,7 +204,7 @@ public class WhoisFreaksMcpServer {
         McpSchema.Tool annotated = McpSchema.Tool.builder()
                 .name(tool.name())
                 .title(title)
-                .description(tool.description().strip() + BEHAVIOR_NOTE)
+                .description(tool.description().strip() + BEHAVIOR_NOTES.getOrDefault(tool.name(), BEHAVIOR_NOTE))
                 .inputSchema(tool.inputSchema())
                 .annotations(new McpSchema.ToolAnnotations(title, true, false, true, true, null))
                 .build();

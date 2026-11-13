@@ -21,6 +21,8 @@ server {
         proxy_set_header Host $http_host;
         # Answers go out as the server produces them.
         proxy_buffering off;
+        # Bulk lookups and domain typosquatting searches can take a few minutes; nginx's default is 60s.
+        proxy_read_timeout 300s;
     }
 
     listen 443 ssl; # managed by Certbot

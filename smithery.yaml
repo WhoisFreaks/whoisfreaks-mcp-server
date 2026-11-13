@@ -1,10 +1,12 @@
 name: whoisfreaks
 displayName: WhoisFreaks
 description: >
-  14 domain intelligence tools for AI assistants - live WHOIS, WHOIS history,
-  reverse WHOIS, IP WHOIS, ASN WHOIS, DNS lookup, DNS history, reverse DNS,
-  IP geolocation, IP security, SSL certificates, domain availability,
-  subdomain enumeration, and domain discovery. Powered by the WhoisFreaks API.
+  22 domain intelligence tools for AI assistants - live and bulk WHOIS, WHOIS
+  history, reverse WHOIS, IP WHOIS, ASN WHOIS, live and bulk DNS, DNS history,
+  reverse DNS, IP geolocation and IP reputation (single and bulk), domain
+  reputation, SSL certificates, domain availability (single and bulk), subdomain
+  enumeration, domain and subdomain typosquatting, and API key usage. Powered by
+  the WhoisFreaks API.
 
 iconUrl: https://whoisfreaks.com/favicon.ico
 homepage: https://whoisfreaks.com
@@ -19,6 +21,8 @@ categories:
 tools:
   - name: liveWhoisLookup
     description: Real-time WHOIS data for any domain
+  - name: bulkWhoisLookup
+    description: Real-time WHOIS data for up to 100 domains in one request
   - name: whoisHistory
     description: Historical WHOIS records and ownership timeline for a domain
   - name: reverseWhoisLookup
@@ -28,23 +32,37 @@ tools:
   - name: asnWhoisLookup
     description: WHOIS data for any Autonomous System Number (ASN)
   - name: dnsLookup
-    description: Live DNS records — A, AAAA, MX, NS, CNAME, TXT, SOA, SPF
+    description: Live DNS records — A, AAAA, MX, NS, CNAME, TXT, SOA, SPF — and PTR records for an IP
+  - name: bulkDnsLookup
+    description: Live DNS records for up to 100 domains and 100 IPs in one request
   - name: dnsHistory
     description: Historical DNS record changes with full timeline
   - name: reverseDnsLookup
     description: Find all domains pointing to a given IP or nameserver
   - name: ipGeolocation
     description: Country, city, ISP, and coordinates for any IP address
+  - name: bulkIpGeolocation
+    description: Geolocation for up to 100 IP addresses in one request
   - name: ipSecurity
-    description: Threat intelligence — VPN, proxy, Tor exit node, bot flags
+    description: IP reputation — VPN, proxy, Tor exit node, relay, bot, spam and attacker flags
+  - name: bulkIpSecurity
+    description: IP reputation for up to 100 IP addresses in one request
   - name: sslLookup
     description: SSL/TLS certificate details — issuer, expiry, SANs, and chain
   - name: domainAvailability
     description: Check if a domain is available to register, with suggestions
+  - name: bulkDomainAvailability
+    description: Check up to 100 domains, or one name across up to 100 TLDs
   - name: subdomainLookup
     description: Enumerate all known subdomains for a domain
   - name: domainDiscovery
-    description: Discover domains by keyword including typosquatting variants
+    description: Find registered domains that are typo variants of a brand (typosquatting)
+  - name: subdomainTyposquatting
+    description: Find subdomains on any domain that imitate a brand
+  - name: domainReputation
+    description: Risk verdict, trust score and threat intelligence for a domain
+  - name: apiKeyUsage
+    description: Credits and subscription requests used by your API key
 
 startCommand:
   type: stdio

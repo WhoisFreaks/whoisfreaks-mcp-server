@@ -18,7 +18,7 @@ Every user brings their **own WhoisFreaks API key** — the HTTP server stores n
 
 ## Table of Contents
 
-1. [Tools Reference (14 tools)](#tools-reference)
+1. [Tools Reference (22 tools)](#tools-reference)
 2. [Hosted Server (no install)](#hosted-server-no-install)
 3. [Quick Start](#quick-start)
    - [⭐ Recommended — Docker](#-recommended--docker)
@@ -42,8 +42,9 @@ Every user brings their **own WhoisFreaks API key** — the HTTP server stores n
 | Tool | Description |
 |------|-------------|
 | `liveWhoisLookup` | Real-time WHOIS data for any domain — registrar, registrant, dates, nameservers |
+| `bulkWhoisLookup` | Real-time WHOIS data for up to 100 domains in one request |
 | `whoisHistory` | Complete ownership history timeline for a domain |
-| `reverseWhoisLookup` | Find all domains registered by an email address, keyword, owner name, or company |
+| `reverseWhoisLookup` | Find all domains registered by an email address, owner name or company, or whose name contains a keyword |
 
 ### IP & ASN WHOIS Tools
 | Tool | Description |
@@ -54,27 +55,43 @@ Every user brings their **own WhoisFreaks API key** — the HTTP server stores n
 ### DNS Tools
 | Tool | Description |
 |------|-------------|
-| `dnsLookup` | Live DNS records — A, AAAA, MX, NS, CNAME, SOA, TXT, SPF, or all |
+| `dnsLookup` | Live DNS records — A, AAAA, MX, NS, CNAME, SOA, TXT, SPF, or all — and PTR records for an IP |
+| `bulkDnsLookup` | Live DNS records for up to 100 domains and 100 IPs in one request |
 | `dnsHistory` | Historical DNS records with full change timeline |
-| `reverseDnsLookup` | Find all domains pointing to a given IP or nameserver |
+| `reverseDnsLookup` | Find all domains pointing to a given IP or range, mail server or nameserver |
 
 ### IP Intelligence Tools
 | Tool | Description |
 |------|-------------|
 | `ipGeolocation` | Country, city, region, ISP, and coordinates for any IP address |
-| `ipSecurity` | VPN, proxy, Tor exit node, bot, and threat intelligence for any IP |
+| `bulkIpGeolocation` | Geolocation for up to 100 IP addresses in one request |
+| `ipSecurity` | IP reputation: VPN, proxy, Tor exit node, relay, bot, spam and known-attacker signals |
+| `bulkIpSecurity` | IP reputation for up to 100 IP addresses in one request |
 
 ### Domain Tools
 | Tool | Description |
 |------|-------------|
 | `domainAvailability` | Check if a domain is available to register, with optional suggestions |
+| `bulkDomainAvailability` | Check up to 100 domains, or one name across up to 100 extensions (TLDs) |
 | `subdomainLookup` | Enumerate all known subdomains for a domain, with status and date filters |
-| `domainDiscovery` | Find domains by keyword, including typosquatting and similar variants |
+| `domainDiscovery` | Find registered domains that are typo variants of a brand (typosquatting), by keyword or wildcard pattern |
+| `subdomainTyposquatting` | Find subdomains on any domain that contain a typo variant of a brand, such as login.paypa1.example.com |
+| `domainReputation` | Risk verdict, trust score, DGA analysis, threat-feed matches and email security for a domain |
 
 ### SSL Tools
 | Tool | Description |
 |------|-------------|
 | `sslLookup` | SSL/TLS certificate details — issuer, expiry, SANs, chain, and raw output |
+
+
+### Account Tools
+| Tool | Description |
+|------|-------------|
+| `apiKeyUsage` | Credits and subscription requests used by your API key (costs nothing) |
+
+The API's key rotation endpoint has no tool on purpose: it would replace the key the MCP client uses and hand the new one to the AI. Rotate keys in the [billing dashboard](https://billing.whoisfreaks.com/).
+
+The tools call the endpoints of the WhoisFreaks OpenAPI spec and cost the same credits as calling the [API](https://whoisfreaks.com/documentation) directly; the [credit usage page](https://whoisfreaks.com/documentation/credit-usage) lists them. Bulk tools cost credits for each item.
 
 ---
 
@@ -226,7 +243,7 @@ docker ps
 curl http://localhost:3100/health
 # → {"status":"ok"}
 
-# List all 14 registered tools (any key works for listing; tool calls need a valid one)
+# List all 22 registered tools (any key works for listing; tool calls need a valid one)
 curl -s http://localhost:3100/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
@@ -284,11 +301,11 @@ mvn clean package -q
 This produces a single self-contained fat JAR:
 
 ```
-target/whoisfreaks-mcp-server-2.0.0.jar
+target/whoisfreaks-mcp-server-2.1.0.jar
 ```
 
 > **Tip:** Note the **absolute path** to this JAR — you will need it in the platform configs below.
-> Example: `/Users/yourname/whoisfreaks-mcp-server/target/whoisfreaks-mcp-server-2.0.0.jar`
+> Example: `/Users/yourname/whoisfreaks-mcp-server/target/whoisfreaks-mcp-server-2.1.0.jar`
 
 ---
 
@@ -348,7 +365,7 @@ The simplest setup is the [hosted server](#hosted-server-no-install) as a custom
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.1.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -364,7 +381,7 @@ The simplest setup is the [hosted server](#hosted-server-no-install) as a custom
 2. Save the file
 3. Quit Claude Desktop completely (`Cmd+Q` on macOS / taskbar exit on Windows)
 4. Reopen Claude Desktop
-5. Click the **hammer icon** (Tools) in the chat input — you should see 14 WhoisFreaks tools listed
+5. Click the **hammer icon** (Tools) in the chat input — you should see 22 WhoisFreaks tools listed
 
 **Verify it works:** Type `Who owns google.com?` and Claude will automatically call `liveWhoisLookup`.
 
@@ -419,7 +436,7 @@ Cursor supports both remote (HTTP) and stdio servers. Config file: `~/.cursor/mc
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.1.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -474,7 +491,7 @@ Windsurf (by Codeium) supports MCP via its Cascade AI sidebar.
   "mcpServers": {
     "whoisfreaks": {
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.1.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -543,7 +560,7 @@ VS Code supports MCP tools through the GitHub Copilot extension (Chat Participan
     "whoisfreaks": {
       "type": "stdio",
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.1.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -614,7 +631,7 @@ Continue is an open-source AI coding assistant with MCP support for VS Code and 
     {
       "name": "whoisfreaks",
       "command": "java",
-      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
+      "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.1.0.jar"],
       "env": {
         "WHOISFREAKS_API_KEY": "your-api-key-here"
       }
@@ -667,7 +684,7 @@ Zed has a built-in AI assistant with MCP support via its `assistant` configurati
     "mcp_servers": {
       "whoisfreaks": {
         "command": "java",
-        "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.0.0.jar"],
+        "args": ["-jar", "/absolute/path/to/whoisfreaks-mcp-server-2.1.0.jar"],
         "env": {
           "WHOISFREAKS_API_KEY": "your-api-key-here"
         }
@@ -711,8 +728,18 @@ Is 185.220.101.45 a Tor exit node or a VPN?
 
 # Domain Tools
 Is mycompany.io available to register? Suggest 5 alternatives.
+Which of mycompany .com, .io, .ai and .dev are still available? (bulk availability)
 List all known subdomains of tesla.com.
-Find domains similar to 'google' — possible typosquatting targets.
+Find typosquats of 'paypal' registered recently. (domain typosquatting)
+Are there phishing subdomains that imitate 'paypal' on other domains? (subdomain typosquatting)
+Is suspicious-login-portal.com safe? Give me a verdict. (domain reputation)
+
+# Bulk
+Get the WHOIS records of these 20 domains and list their registrars and expiry dates.
+Which of these IPs from my logs are VPNs, proxies or Tor exit nodes?
+
+# Account
+How many credits do I have left on my WhoisFreaks key?
 
 # SSL
 Check the SSL certificate for github.com — who issued it and when does it expire?
@@ -738,11 +765,13 @@ Check the SSL certificate for github.com — who issued it and when does it expi
 |---------|-------|-----|
 | `WHOISFREAKS_API_KEY is not set` (stdio) | Missing env var | Add `-e WHOISFREAKS_API_KEY=your-key` to the Docker command, or add it to the `env` block in your client config |
 | `No WhoisFreaks API key was sent` (HTTP) | Client sent no key | Add `Authorization: Bearer your-key`, an `X-API-Key` header, or `?apiKey=your-key` to the URL, then reconnect |
-| `Unauthorized (HTTP 401/403)` | Invalid or inactive API key | Verify the key at whoisfreaks.com/billing |
+| `Unauthorized (HTTP 401)` | Invalid or inactive API key, or the plan, credits or surcharge limit are used up | The message includes the API's own reason. Check the key and usage at whoisfreaks.com/billing, or ask the assistant to run `apiKeyUsage` |
+| `Not supported (HTTP 403)` | WhoisFreaks does not support the domain's extension (TLD), or it is inactive | Try another domain |
 | `No data found (HTTP 404)` | Domain/IP/ASN not in database | Double-check the input value is correct |
-| `Rate limit reached (HTTP 429)` | Too many requests | Slow down or upgrade your plan |
-| `Credit limit exceeded (HTTP 413)` | Credits exhausted | Add credits at whoisfreaks.com/billing |
+| `Rate limit reached (HTTP 429)` | Too many requests per minute | Wait for the number of seconds in the message, or upgrade your plan |
+| `Too large (HTTP 413)` | A bulk list has more than 100 items | Split the list; the bulk tools also refuse more than 100 items before calling the API |
 | `Timeout (HTTP 408)` | Upstream WHOIS server is slow | Retry — some TLDs have slow WHOIS servers |
+| `did not answer within ... seconds` | The API took too long (60 s for single lookups, 240 s for bulk lookups and typosquatting searches) | Try again later |
 
 ### Docker Errors
 

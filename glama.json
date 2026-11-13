@@ -6,7 +6,7 @@
   "homepage": "https://whoisfreaks.com",
   "categories": ["security", "networking-and-infrastructure", "search"],
   "tags": ["whois", "domain", "ip", "dns", "threat-intelligence", "mcp"],
-  "version": "2.0.0",
+  "version": "2.1.0",
   "language": "java",
   "runtime": "java17",
   "transport": ["stdio", "streamable-http"],

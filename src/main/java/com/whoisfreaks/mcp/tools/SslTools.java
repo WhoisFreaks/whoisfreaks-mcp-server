@@ -65,10 +65,12 @@ public class SslTools {
                         Use this to check expiry dates, the issuer, covered hostnames (SANs) or key type, or to debug HTTPS errors.
                         Set chain=true to include intermediate and root certificates when diagnosing trust-chain problems, and
                         sslRaw=true only when you need the raw OpenSSL output, which is long. For DNS records use dnsLookup; for
-                        domain ownership use liveWhoisLookup.
-                        Returns the subject (common name, SANs, organisation), issuer, validity dates, serial number, SHA-1 and
-                        SHA-256 fingerprints, key algorithm and size, and TLS version and cipher. A domain with no certificate
-                        returns a "no data found" (HTTP 404) message.
+                        domain ownership use liveWhoisLookup; for an overall risk verdict on the domain use domainReputation.
+                        Costs 1 credit, plus 1 credit per 2 certificates with chain=true.
+                        Returns each certificate's subject (common name, organisation), issuer, validity dates, serial number,
+                        signature algorithm, key algorithm and size, and extensions: covered hostnames (SANs), key usages, issuer
+                        and OCSP URLs, and certificate policies. A domain with no certificate returns a "no data found" (HTTP 404)
+                        message.
                         """,
                         schema),
                 (context, request) -> {
