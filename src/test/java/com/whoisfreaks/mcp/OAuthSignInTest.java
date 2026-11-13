@@ -43,17 +43,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * OAuth mode end to end: the real Jetty server with its filters, against a local stand-in for the
- * authorization server's JWKS and billing's API key lookup. No tool here reaches api.whoisfreaks.com.
+ * One server taking API keys and OAuth access tokens side by side: the real Jetty server with its
+ * filters, against a local stand-in for the authorization server's JWKS and billing's API key lookup.
+ * No request here reaches api.whoisfreaks.com: only tools/list runs with a key.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class OAuthModeTest {
+class OAuthSignInTest {
 
-    private static final String RESOURCE = "https://mcp-oauth.test";
+    private static final String RESOURCE = "https://mcp.test";
     private static final String SERVER_TOKEN = "server-token";
     private static final String API_KEY = "0123456789abcdef0123456789abcdef";
     private static final String INITIALIZE = "{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},"
             + "\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}";
+    private static final String CALL_LOOKUP = "{\"name\":\"liveWhoisLookup\",\"arguments\":{\"domainName\":\"example.com\"}}";
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private record BillingAnswer(int status, String body) {
@@ -65,10 +67,10 @@ class OAuthModeTest {
 
     private RSAKey signingKey;
     private HttpServer stub;
-    private Server oauthServer;
-    private Server apiKeyServer;
+    private Server server;
+    private Server apiKeyOnlyServer;
     private String issuer;
-    private String oauthBase;
+    private String base;
 
     @BeforeAll
     void start() throws Exception {
@@ -81,103 +83,76 @@ class OAuthModeTest {
         issuer = "http://127.0.0.1:" + stub.getAddress().getPort();
 
         OAuthSettings settings = new OAuthSettings(issuer, RESOURCE, URI.create(issuer + "/oauth2/jwks"), issuer, SERVER_TOKEN);
-        oauthServer = WhoisFreaksHttpServer.start(0, settings);
-        oauthBase = "http://127.0.0.1:" + port(oauthServer);
-        apiKeyServer = WhoisFreaksHttpServer.start(0, null);
+        server = WhoisFreaksHttpServer.start(0, settings);
+        base = "http://127.0.0.1:" + port(server);
+        apiKeyOnlyServer = WhoisFreaksHttpServer.start(0, null);
     }
 
     @AfterAll
     void stop() throws Exception {
-        oauthServer.stop();
-        apiKeyServer.stop();
+        server.stop();
+        apiKeyOnlyServer.stop();
         stub.stop(0);
     }
 
+    // ---- Discovery
+
     @Test
     void metadataNamesTheResourceAndTheAuthorizationServer() throws Exception {
-        HttpResponse<String> response = client.send(
-                HttpRequest.newBuilder(URI.create(oauthBase + "/.well-known/oauth-protected-resource")).GET().build(),
-                HttpResponse.BodyHandlers.ofString());
+        JsonNode root = JSON.readTree(get("/.well-known/oauth-protected-resource").body());
+        JsonNode mcp = JSON.readTree(get("/.well-known/oauth-protected-resource/mcp").body());
 
-        assertEquals(200, response.statusCode());
-        JsonNode metadata = JSON.readTree(response.body());
-        assertEquals(RESOURCE, metadata.path("resource").asText());
-        assertEquals(issuer, metadata.path("authorization_servers").path(0).asText());
-        assertEquals("lookups", metadata.path("scopes_supported").path(0).asText());
+        assertEquals(RESOURCE, root.path("resource").asText());
+        assertEquals(RESOURCE + "/mcp", mcp.path("resource").asText());
+        assertEquals(issuer, root.path("authorization_servers").path(0).asText());
+        assertEquals("lookups", root.path("scopes_supported").path(0).asText());
+    }
+
+    // ---- API keys and no credentials: as without OAuth
+
+    @Test
+    void requestWithoutCredentialsIsServedAsBefore() throws Exception {
+        HttpResponse<String> initialize = post(Map.of(), "initialize", INITIALIZE);
+        HttpResponse<String> call = post(Map.of(), "tools/call", CALL_LOOKUP);
+
+        assertEquals(200, initialize.statusCode(), initialize.body());
+        assertFalse(initialize.headers().firstValue("WWW-Authenticate").isPresent());
+        JsonNode result = JSON.readTree(call.body()).path("result");
+        assertTrue(result.path("isError").asBoolean(), call.body());
+        String text = result.path("content").path(0).path("text").asText();
+        assertTrue(text.contains("X-API-Key") && text.contains("WhoisFreaks plugin"), text);
     }
 
     @Test
-    void requestWithoutTokenGetsTheChallenge() throws Exception {
-        HttpResponse<String> response = post(null, "initialize", INITIALIZE);
+    void apiKeysWorkAlongsideOAuth() throws Exception {
+        HttpResponse<String> header = post(Map.of("X-API-Key", API_KEY), "tools/list", "{}");
+        HttpResponse<String> bearer = post(Map.of("Authorization", "Bearer " + API_KEY), "tools/list", "{}");
 
-        assertEquals(401, response.statusCode());
-        String challenge = response.headers().firstValue("WWW-Authenticate").orElse("");
-        assertTrue(challenge.startsWith("Bearer "), challenge);
-        assertTrue(challenge.contains("resource_metadata=\"" + RESOURCE + "/.well-known/oauth-protected-resource\""), challenge);
-        assertTrue(challenge.contains("scope=\"lookups\""), challenge);
-        assertTrue(response.headers().firstValue("Access-Control-Expose-Headers").orElse("").contains("WWW-Authenticate"));
+        assertEquals(200, header.statusCode(), header.body());
+        assertEquals(200, bearer.statusCode(), bearer.body());
+        assertTrue(bearer.body().contains("liveWhoisLookup"));
+        assertTrue(billingCalls.isEmpty(), "billing is only asked about access tokens");
     }
 
     @Test
-    void apiKeyHeadersDontGetIn() throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(oauthBase + "/mcp"))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json, text/event-stream")
-                .header("X-API-Key", API_KEY)
-                .POST(HttpRequest.BodyPublishers.ofString(rpc("initialize", INITIALIZE)))
-                .build();
-
-        assertEquals(401, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
-    }
-
-    @Test
-    void preflightNeedsNoToken() throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(oauthBase + "/mcp"))
+    void preflightNeedsNoCredentials() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(base + "/mcp"))
                 .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
                 .build();
 
-        assertEquals(204, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(204, response.statusCode());
+        assertTrue(response.headers().firstValue("Access-Control-Expose-Headers").orElse("").contains("WWW-Authenticate"));
     }
 
-    @Test
-    void tokenSignedWithAnotherKeyIsRejected() throws Exception {
-        RSAKey otherKey = new RSAKeyGenerator(2048).keyID("test-key").generate();
-        SignedJWT jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("test-key").build(), claims(c -> { }));
-        jwt.sign(new RSASSASigner(otherKey));
-
-        assertInvalidToken(post(jwt.serialize(), "initialize", INITIALIZE));
-    }
-
-    @Test
-    void tokenForAnotherResourceIsRejected() throws Exception {
-        assertInvalidToken(post(token(c -> c.audience("https://elsewhere.test")), "initialize", INITIALIZE));
-    }
-
-    @Test
-    void tokenFromAnotherIssuerIsRejected() throws Exception {
-        assertInvalidToken(post(token(c -> c.issuer("https://elsewhere.test")), "initialize", INITIALIZE));
-    }
-
-    @Test
-    void expiredTokenIsRejected() throws Exception {
-        assertInvalidToken(post(token(c -> c.expirationTime(Date.from(Instant.now().minusSeconds(120)))),
-                "initialize", INITIALIZE));
-    }
-
-    @Test
-    void tokenWithoutTheLookupsScopeIsForbidden() throws Exception {
-        HttpResponse<String> response = post(token(c -> c.claim("scope", List.of("profile"))), "initialize", INITIALIZE);
-
-        assertEquals(403, response.statusCode());
-        assertTrue(response.headers().firstValue("WWW-Authenticate").orElse("").contains("error=\"insufficient_scope\""));
-    }
+    // ---- Access tokens
 
     @Test
     void validTokenListsToolsAndBillingIsAskedOncePerMinute() throws Exception {
         String token = token(c -> { });
 
-        HttpResponse<String> first = post(token, "tools/list", "{}");
-        HttpResponse<String> second = post(token, "tools/list", "{}");
+        HttpResponse<String> first = postWithToken(token, "tools/list", "{}");
+        HttpResponse<String> second = postWithToken(token, "tools/list", "{}");
 
         assertEquals(200, first.statusCode(), first.body());
         assertTrue(first.body().contains("liveWhoisLookup"), first.body());
@@ -186,11 +161,51 @@ class OAuthModeTest {
     }
 
     @Test
+    void tokenForTheMcpPathIsAccepted() throws Exception {
+        HttpResponse<String> response = postWithToken(token(c -> c.audience(RESOURCE + "/mcp")), "tools/list", "{}");
+
+        assertEquals(200, response.statusCode(), response.body());
+    }
+
+    @Test
+    void tokenSignedWithAnotherKeyGetsTheChallenge() throws Exception {
+        RSAKey otherKey = new RSAKeyGenerator(2048).keyID("test-key").generate();
+        SignedJWT jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("test-key").build(), claims(c -> { }));
+        jwt.sign(new RSASSASigner(otherKey));
+
+        assertInvalidToken(postWithToken(jwt.serialize(), "initialize", INITIALIZE));
+    }
+
+    @Test
+    void tokenForAnotherResourceGetsTheChallenge() throws Exception {
+        assertInvalidToken(postWithToken(token(c -> c.audience("https://elsewhere.test")), "initialize", INITIALIZE));
+    }
+
+    @Test
+    void tokenFromAnotherIssuerGetsTheChallenge() throws Exception {
+        assertInvalidToken(postWithToken(token(c -> c.issuer("https://elsewhere.test")), "initialize", INITIALIZE));
+    }
+
+    @Test
+    void expiredTokenGetsTheChallenge() throws Exception {
+        assertInvalidToken(postWithToken(token(c -> c.expirationTime(Date.from(Instant.now().minusSeconds(120)))),
+                "initialize", INITIALIZE));
+    }
+
+    @Test
+    void tokenWithoutTheLookupsScopeIsForbidden() throws Exception {
+        HttpResponse<String> response = postWithToken(token(c -> c.claim("scope", List.of("profile"))), "initialize", INITIALIZE);
+
+        assertEquals(403, response.statusCode());
+        assertTrue(response.headers().firstValue("WWW-Authenticate").orElse("").contains("error=\"insufficient_scope\""));
+    }
+
+    @Test
     void tokenBillingNoLongerAcceptsGetsTheChallenge() throws Exception {
         String token = token(c -> { });
         billingAnswers.put(token, new BillingAnswer(401, "{\"error\":\"invalid_token\"}"));
 
-        assertInvalidToken(post(token, "tools/list", "{}"));
+        assertInvalidToken(postWithToken(token, "tools/list", "{}"));
     }
 
     @Test
@@ -198,9 +213,8 @@ class OAuthModeTest {
         String token = token(c -> { });
         billingAnswers.put(token, new BillingAnswer(403, "{\"error\":\"user not active\"}"));
 
-        HttpResponse<String> list = post(token, "tools/list", "{}");
-        HttpResponse<String> call = post(token, "tools/call",
-                "{\"name\":\"liveWhoisLookup\",\"arguments\":{\"domainName\":\"example.com\"}}");
+        HttpResponse<String> list = postWithToken(token, "tools/list", "{}");
+        HttpResponse<String> call = postWithToken(token, "tools/call", CALL_LOOKUP);
 
         assertEquals(200, list.statusCode());
         assertEquals(200, call.statusCode(), call.body());
@@ -214,21 +228,25 @@ class OAuthModeTest {
         String token = token(c -> { });
         billingAnswers.put(token, new BillingAnswer(401, "{\"error\":\"unauthorized\"}"));
 
-        HttpResponse<String> response = post(token, "tools/list", "{}");
+        HttpResponse<String> response = postWithToken(token, "tools/list", "{}");
 
         assertEquals(503, response.statusCode());
         assertFalse(response.headers().firstValue("WWW-Authenticate").isPresent());
     }
 
+    // ---- Without OAuth settings
+
     @Test
-    void apiKeyModeIsUnchanged() throws Exception {
-        String base = "http://127.0.0.1:" + port(apiKeyServer);
-        HttpRequest initialize = HttpRequest.newBuilder(URI.create(base + "/mcp"))
+    void withoutOAuthSettingsATokenIsJustABadKey() throws Exception {
+        String apiKeyOnly = "http://127.0.0.1:" + port(apiKeyOnlyServer);
+        HttpRequest initialize = HttpRequest.newBuilder(URI.create(apiKeyOnly + "/mcp"))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream")
+                .header("Authorization", "Bearer " + token(c -> { }))
                 .POST(HttpRequest.BodyPublishers.ofString(rpc("initialize", INITIALIZE)))
                 .build();
-        HttpRequest metadata = HttpRequest.newBuilder(URI.create(base + "/.well-known/oauth-protected-resource")).GET().build();
+        HttpRequest metadata = HttpRequest.newBuilder(URI.create(apiKeyOnly + "/.well-known/oauth-protected-resource"))
+                .GET().build();
 
         HttpResponse<String> response = client.send(initialize, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode(), response.body());
@@ -239,18 +257,28 @@ class OAuthModeTest {
     private void assertInvalidToken(HttpResponse<String> response) {
         assertEquals(401, response.statusCode(), response.body());
         String challenge = response.headers().firstValue("WWW-Authenticate").orElse("");
-        assertTrue(challenge.contains("error=\"invalid_token\""), challenge);
-        assertTrue(challenge.contains("resource_metadata="), challenge);
+        assertTrue(challenge.startsWith("Bearer error=\"invalid_token\""), challenge);
+        assertTrue(challenge.contains("resource_metadata=\"" + RESOURCE + "/.well-known/oauth-protected-resource\""), challenge);
+        assertTrue(challenge.contains("scope=\"lookups\""), challenge);
     }
 
-    private HttpResponse<String> post(String token, String method, String params) throws Exception {
-        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(oauthBase + "/mcp"))
+    private HttpResponse<String> get(String path) throws Exception {
+        HttpResponse<String> response = client.send(HttpRequest.newBuilder(URI.create(base + path)).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode(), path);
+        return response;
+    }
+
+    private HttpResponse<String> postWithToken(String token, String method, String params) throws Exception {
+        return post(Map.of("Authorization", "Bearer " + token), method, params);
+    }
+
+    private HttpResponse<String> post(Map<String, String> headers, String method, String params) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(base + "/mcp"))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(rpc(method, params)));
-        if (token != null) {
-            request.header("Authorization", "Bearer " + token);
-        }
+        headers.forEach(request::header);
         return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 

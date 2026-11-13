@@ -93,18 +93,9 @@
 
     - name: DNS record
       ansible.builtin.import_tasks: tasks/setup_dns.yml
-      vars:
-        dns_hostname: "{{ mcp_hostname }}"
       tags: dns
 
-    - name: DNS record for OAuth mode
-      ansible.builtin.import_tasks: tasks/setup_dns.yml
-      vars:
-        dns_hostname: "{{ mcp_oauth_hostname }}"
-      when: oauth_enabled | bool
-      tags: dns
-
-    - name: nginx, the sites and their certificates
+    - name: nginx and the certificate
       ansible.builtin.import_tasks: tasks/setup_nginx.yml
       tags: nginx
 

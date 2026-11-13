@@ -1,6 +1,5 @@
-# setup.yml, nginx part: nginx.conf, the real-visitor-IP, logging and rate-limit settings, and for each
-# server on this machine (app_instances: MCP_HOSTNAME's, and MCP_OAUTH_HOSTNAME's when it is set) a site
-# in front of it and a Let's Encrypt certificate.
+# setup.yml, nginx part: nginx.conf, the real-visitor-IP, logging and rate-limit settings, the site for
+# MCP_HOSTNAME (in front of the server on this machine), and a Let's Encrypt certificate for it.
 - name: Set up nginx
   become: true
   block:
@@ -56,31 +55,20 @@
           {{ nginx_main_conf.changed or nginx_default_site.changed or nginx_realip.changed or nginx_logging.changed
              or nginx_http.changed }}
 
-    - name: Write the sites and start nginx
+    - name: Write the site and start nginx
       ansible.builtin.include_tasks: setup_nginx_site.yml
-      loop: "{{ app_instances }}"
-      loop_control:
-        loop_var: instance
-        label: "{{ instance.hostname }}"
 
-    - name: Get a certificate for each site
+    - name: Get a certificate for {{ mcp_hostname }}
       ansible.builtin.command: >-
-        certbot certonly --nginx -d {{ instance.hostname }} --non-interactive --agree-tos
+        certbot certonly --nginx -d {{ mcp_hostname }} --non-interactive --agree-tos
         {{ ('-m ' ~ letsencrypt_email) if letsencrypt_email else '--register-unsafely-without-email' }}
       args:
-        creates: /etc/letsencrypt/live/{{ instance.hostname }}/fullchain.pem
-      loop: "{{ app_instances }}"
-      loop_control:
-        loop_var: instance
-        label: "{{ instance.hostname }}"
+        creates: /etc/letsencrypt/live/{{ mcp_hostname }}/fullchain.pem
       register: certbot
 
-    - name: Add HTTPS to the sites that just got their certificate
+    - name: Add HTTPS to the site
       ansible.builtin.include_tasks: setup_nginx_site.yml
-      loop: "{{ certbot.results | selectattr('changed') | map(attribute='instance') | list }}"
-      loop_control:
-        loop_var: instance
-        label: "{{ instance.hostname }}"
+      when: certbot.changed
 
     - name: Renew certificates automatically
       ansible.builtin.systemd_service:

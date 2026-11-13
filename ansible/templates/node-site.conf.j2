@@ -1,9 +1,9 @@
-{# setup.yml: a site, one for each server in app_instances. Before the machine has a certificate for
-   it, only the port 80 block, so Let's Encrypt can check the name. #}
-# {{ instance.hostname }}: {{ instance.what }} on this machine (port {{ instance.port }}). Written by ansible/setup.yml.
+{# setup.yml: the site. Before the machine has a certificate, only the port 80 block, so
+   Let's Encrypt can check the name. #}
+# {{ mcp_hostname }}: the WhoisFreaks MCP server on this machine (port {{ app_port }}). Written by ansible/setup.yml.
 {% if node_has_cert | bool %}
 server {
-    server_name {{ instance.hostname }};
+    server_name {{ mcp_hostname }};
     include /etc/nginx/cloudflare-realip.conf;
     include /etc/nginx/mcp-logging.conf;
 
@@ -14,7 +14,7 @@ server {
         limit_req zone=mcp burst={{ nginx_rate_burst }} nodelay;
         limit_req_status 429;
 
-        proxy_pass http://127.0.0.1:{{ instance.port }};
+        proxy_pass http://127.0.0.1:{{ app_port }};
         proxy_http_version 1.1;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -26,8 +26,8 @@ server {
     }
 
     listen 443 ssl; # managed by Certbot
-    ssl_certificate /etc/letsencrypt/live/{{ instance.hostname }}/fullchain.pem; # managed by Certbot
-    ssl_certificate_key /etc/letsencrypt/live/{{ instance.hostname }}/privkey.pem; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/{{ mcp_hostname }}/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/{{ mcp_hostname }}/privkey.pem; # managed by Certbot
 {% if certbot_options | bool %}
     include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
 {% endif %}
@@ -38,12 +38,12 @@ server {
 }
 
 server {
-    if ($host = {{ instance.hostname }}) {
+    if ($host = {{ mcp_hostname }}) {
         return 301 https://$host$request_uri;
     } # managed by Certbot
 
 
-    server_name {{ instance.hostname }};
+    server_name {{ mcp_hostname }};
     include /etc/nginx/cloudflare-realip.conf;
     include /etc/nginx/mcp-logging.conf;
     listen 80;
@@ -53,7 +53,7 @@ server {
 }
 {%- else %}
 server {
-    server_name {{ instance.hostname }};
+    server_name {{ mcp_hostname }};
     include /etc/nginx/cloudflare-realip.conf;
     include /etc/nginx/mcp-logging.conf;
     listen 80;

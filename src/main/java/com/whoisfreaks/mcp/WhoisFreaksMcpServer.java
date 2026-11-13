@@ -43,24 +43,21 @@ import java.util.function.Function;
  *                           lists its tools, but tool calls return an error.
  *   HTTP  (--http flag or MCP_TRANSPORT=http)
  *                         — hosted, multi-user; every request carries the caller's own API key
- *                           (see {@link WhoisFreaksHttpServer})
- *   HTTP with OAuth (--oauth flag or MCP_AUTH=oauth; implies HTTP)
- *                         — hosted, for the WhoisFreaks plugin in ChatGPT and Codex: users sign in
- *                           with OAuth instead of sending a key (see {@link OAuthSettings})
+ *                           (see {@link WhoisFreaksHttpServer}). With OAUTH_ISSUER set, users can
+ *                           also sign in with OAuth instead, as the WhoisFreaks plugin in ChatGPT
+ *                           and Codex does (see {@link OAuthSettings})
  */
 public class WhoisFreaksMcpServer {
 
     static final String SERVER_NAME = "whoisfreaks-mcp-server";
 
     public static void main(String[] args) throws Exception {
-        boolean oauthMode = Arrays.asList(args).contains("--oauth")
-                || "oauth".equalsIgnoreCase(System.getenv("MCP_AUTH"));
-        boolean httpMode = oauthMode || Arrays.asList(args).contains("--http")
+        boolean httpMode = Arrays.asList(args).contains("--http")
                 || "http".equalsIgnoreCase(System.getenv("MCP_TRANSPORT"));
         if (httpMode) {
             String port = System.getenv("PORT");
             WhoisFreaksHttpServer.run(port != null && !port.isBlank() ? Integer.parseInt(port) : 3100,
-                    oauthMode ? OAuthSettings.fromEnvironment() : null);
+                    OAuthSettings.fromEnvironment());
         } else {
             runStdio();
         }

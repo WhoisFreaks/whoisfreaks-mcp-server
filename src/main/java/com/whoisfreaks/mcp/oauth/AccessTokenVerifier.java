@@ -22,7 +22,8 @@ import java.util.List;
 /**
  * Checks the access tokens apps send: an RS256 JWT signed with one of the authorization
  * server's keys (fetched from its JWKS and cached), issued by OAUTH_ISSUER for this server
- * (MCP_RESOURCE as audience), unexpired with 60 s clock skew, for a subject, with the lookups scope.
+ * (one of {@link OAuthSettings#resources()} as audience), unexpired with 60 s clock skew, for a
+ * subject, with the lookups scope.
  */
 public class AccessTokenVerifier {
 
@@ -60,7 +61,7 @@ public class AccessTokenVerifier {
         this.processor.setJWSKeySelector(new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, keys));
         // Mutable sets: Nimbus asks them contains(null), which Set.of() answers with an exception.
         this.processor.setJWTClaimsSetVerifier(new DefaultJWTClaimsVerifier<>(
-                new HashSet<>(List.of(settings.resource())),
+                new HashSet<>(settings.resources()),
                 new JWTClaimsSet.Builder().issuer(settings.issuer()).build(),
                 new HashSet<>(List.of("sub", "exp")),
                 null));

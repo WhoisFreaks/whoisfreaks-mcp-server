@@ -6,9 +6,9 @@
 - `server.json` for the Official MCP Registry (`io.github.WhoisFreaks/whoisfreaks-mcp-server`), listing the hosted server and the Docker image
 - The release workflow publishes every release to the registry, and can be run by hand to publish the current version without a release
 - The Docker image carries the `io.modelcontextprotocol.server.name` label the registry checks
-- OAuth mode (`--oauth` or `MCP_AUTH=oauth`) for the WhoisFreaks plugin in ChatGPT and Codex, which can only sign users in with OAuth. Every request needs an access token from the WhoisFreaks authorization server, else 401 with a challenge pointing to `/.well-known/oauth-protected-resource`; a valid token is traded for the account's API key at billing (cached for up to a minute). Configured by `OAUTH_ISSUER`, `MCP_RESOURCE`, `BILLING_URL` and `BILLING_SERVER_TOKEN`. The API-key mode is unchanged
-- A `whoisfreaks-mcp-oauth` service in `deploy/docker-compose.yml`, and tests (`mvn test`)
-- `ansible/` sets up OAuth mode when `MCP_OAUTH_HOSTNAME` is set (with `OAUTH_ISSUER`, `BILLING_URL` and `BILLING_SERVER_TOKEN`): a second service, `whoisfreaks-mcp-oauth` on port 3101, from the same JAR, with its settings in a file only root can read, and its own DNS record, nginx site and certificate. `deploy.yml` restarts, checks and rolls back both services, and `status.yml` shows both. Without `MCP_OAUTH_HOSTNAME` the playbooks do what they did before
+- Signing in with OAuth, next to API keys, at the same address, for the WhoisFreaks plugin in ChatGPT and Codex, which can only connect with OAuth. On when `OAUTH_ISSUER` is set (with `MCP_RESOURCE`, `BILLING_URL` and `BILLING_SERVER_TOKEN`). A bearer value that is a JWT is an access token from the WhoisFreaks authorization server: it is checked and traded for the account's API key at billing (cached for up to a minute), and an unusable one gets 401 with a challenge pointing to `/.well-known/oauth-protected-resource`. API keys, and requests without credentials, are handled as before: no 401
+- `deploy/docker-compose.yml` passes the OAuth variables through, and tests (`mvn test`)
+- `ansible/` writes the OAuth settings to a file only root can read when `OAUTH_ISSUER` is set in its `.env`, and removes it when it isn't; the service reads it at start
 
 ## [2.1.0] - 2026-11-13
 

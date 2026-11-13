@@ -9,8 +9,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 /**
- * This server's OAuth protected resource metadata (RFC 9728), at {@link OAuthSettings#metadataPath()}.
- * Apps find it through the 401 challenge, and learn from it which authorization server signs users in.
+ * The OAuth protected resource metadata (RFC 9728) of one of this server's resource identifiers,
+ * at {@link OAuthSettings#metadataPath(String)}. Apps read it to learn which authorization server
+ * signs users in: at the well-known URL for the server address they were given, or the one a 401
+ * challenge names.
  */
 public class ProtectedResourceMetadataServlet extends HttpServlet {
 
@@ -18,10 +20,10 @@ public class ProtectedResourceMetadataServlet extends HttpServlet {
 
     private final String body;
 
-    public ProtectedResourceMetadataServlet(OAuthSettings settings) {
+    public ProtectedResourceMetadataServlet(OAuthSettings settings, String resource) {
         ObjectMapper json = new ObjectMapper();
         ObjectNode metadata = json.createObjectNode();
-        metadata.put("resource", settings.resource());
+        metadata.put("resource", resource);
         metadata.putArray("authorization_servers").add(settings.issuer());
         metadata.putArray("scopes_supported").add(OAuthSettings.LOOKUPS_SCOPE);
         metadata.putArray("bearer_methods_supported").add("header");

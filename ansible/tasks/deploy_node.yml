@@ -4,8 +4,6 @@
 #   2. keep the running JAR as app_previous_jar (if it answers /health), install the new one and restart
 #      (a few seconds down)
 #   3. if the new version doesn't answer /health, put the previous JAR back and restart
-# Every server in app_instances (OAuth mode's too, when it is set up) runs the one JAR, so they are
-# restarted, checked and rolled back together.
 # Sets nothing; stops the run with what happened and what state the server is in.
 - name: Pull and build while the running version keeps serving
   block:
@@ -103,33 +101,26 @@
         mode: "0644"
       become: true
 
-    - name: Restart {{ app_instances | map(attribute='service') | join(' and ') }}
-      ansible.builtin.command: systemctl restart {{ app_instances | map(attribute='service') | join(' ') }}
+    - name: Restart the server
+      ansible.builtin.command: systemctl restart {{ app_service }}
       become: true
 
     - name: Wait for the new version's /health to answer
       ansible.builtin.uri:
         url: "{{ node_check_url }}"
         headers:
-          Host: "{{ instance.hostname }}"
+          Host: "{{ mcp_hostname }}"
         validate_certs: false
         status_code: "{{ node_check_status }}"
       register: app_check
       until: app_check.status == node_check_status | int
       retries: "{{ app_start_timeout // 5 }}"
       delay: 5
-      loop: "{{ app_instances }}"
-      loop_control:
-        loop_var: instance
-        label: "{{ instance.hostname }}"
   rescue:
     - name: Note what failed
       ansible.builtin.set_fact:
         install_failure: >-
-          "{{ ansible_failed_task.name }}" failed{{
-          (' for ' ~ (ansible_failed_result.results | selectattr('failed', 'defined') | selectattr('failed')
-                      | map(attribute='instance.hostname') | join(' and ')))
-          if ansible_failed_result.results is defined else '' }}: {{ ansible_failed_result.msg | default('no message') }}
+          "{{ ansible_failed_task.name }}" failed: {{ ansible_failed_result.msg | default('no message') }}
 
     - name: Put the previous version back
       ansible.builtin.copy:
@@ -142,8 +133,8 @@
       become: true
       when: rollback_jar.stat.exists
 
-    - name: Restart {{ app_instances | map(attribute='service') | join(' and ') }} with it
-      ansible.builtin.command: systemctl restart {{ app_instances | map(attribute='service') | join(' ') }}
+    - name: Restart the server with it
+      ansible.builtin.command: systemctl restart {{ app_service }}
       become: true
       when: rollback_jar.stat.exists
 
@@ -151,7 +142,7 @@
       ansible.builtin.uri:
         url: "{{ node_check_url }}"
         headers:
-          Host: "{{ instance.hostname }}"
+          Host: "{{ mcp_hostname }}"
         validate_certs: false
         status_code: "{{ node_check_status }}"
       register: rollback_check
@@ -160,29 +151,19 @@
       delay: 5
       failed_when: false
       when: rollback_jar.stat.exists
-      loop: "{{ app_instances }}"
-      loop_control:
-        loop_var: instance
-        label: "{{ instance.hostname }}"
-
-    - name: Note which servers the previous version didn't bring back
-      ansible.builtin.set_fact:
-        rollback_down: >-
-          {{ rollback_check.results | default([])
-             | rejectattr('status', 'equalto', node_check_status | int) | map(attribute='instance.hostname') | list }}
 
     - name: Stop
       ansible.builtin.fail:
         msg: >-
           The new version ({{ new_revision.stdout }}) didn't come up: {{ install_failure }}
-          {{ 'There was no version before it, so the server is not running. Read "journalctl ' ~ app_journal_units
-               ~ '" on the server, fix it and run again.'
-             if not rollback_jar.stat.exists else
-             'The previous version is back and answers /health, so the server is up. Read "journalctl '
-               ~ app_journal_units ~ '" on the server for why the new one failed, fix it and run deploy.yml again.'
-             if rollback_down | length == 0 else
-             'The previous version was put back, but ' ~ rollback_down | join(' and ')
-               ~ ' does not answer /health either: IT IS DOWN. Read "journalctl ' ~ app_journal_units ~ '" on the server.' }}
+          {{ 'The previous version is back and answers /health, so the server is up. Read "journalctl -u '
+               ~ app_service ~ '" on the server for why the new one failed, fix it and run deploy.yml again.'
+             if rollback_jar.stat.exists and rollback_check.status | default(0) == node_check_status | int else
+             'The previous version was put back but does not answer /health either: THE SERVER IS DOWN. Read "journalctl -u '
+               ~ app_service ~ '" on the server.'
+             if rollback_jar.stat.exists else
+             'There was no version before it, so the server is not running. Read "journalctl -u ' ~ app_service
+               ~ '" on the server, fix it and run again.' }}
 
 - name: Note which commit runs now
   ansible.builtin.copy:

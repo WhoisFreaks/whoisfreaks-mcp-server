@@ -13,14 +13,17 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 /**
- * OAuth mode's gate in front of the MCP endpoint. Every request needs a bearer access token
- * from the authorization server; without a usable one the answer is 401 with a challenge
- * pointing to this server's protected resource metadata, which is how apps such as ChatGPT
- * learn to sign the user in (403 for a token without the lookups scope).
+ * Handles the requests that carry an OAuth access token: a bearer value that is a JWT (three
+ * dot-separated parts), which an API key never is. Every other request (an API key in any of
+ * its forms, or no credentials) passes through untouched to the API-key handling, so clients
+ * that send keys see no difference, and none of them ever gets a 401 from here.
  *
- * A valid token is traded for the account's API key ({@link BillingApiKeys}), passed on as a
- * request attribute. An account that can't run lookups still gets through, with the reason as
- * an attribute instead, so tools explain it rather than sending the app back to sign in.
+ * An unusable token gets 401 with a challenge pointing to this server's protected resource
+ * metadata, so apps such as ChatGPT refresh it or sign the user in again (403 for a token
+ * without the lookups scope). A valid token is traded for the account's API key
+ * ({@link BillingApiKeys}), passed on as a request attribute. An account that can't run lookups
+ * still gets through, with the reason as an attribute instead, so tools explain it rather than
+ * sending the app back to sign in.
  *
  * Runs after WhoisFreaksHttpServer's McpFilter, which answers CORS preflights and malformed
  * requests, so these answers also carry the CORS headers browser-based clients need.
@@ -48,10 +51,9 @@ public class OAuthFilter implements Filter {
         HttpServletRequest request = (HttpServletRequest) req;
         HttpServletResponse response = (HttpServletResponse) res;
 
-        String token = bearerToken(request);
+        String token = accessToken(request);
         if (token == null) {
-            challenge(response, HttpServletResponse.SC_UNAUTHORIZED, null,
-                    "Sign in through the WhoisFreaks plugin, or send an OAuth access token as 'Authorization: Bearer <token>'.");
+            chain.doFilter(request, response);
             return;
         }
 
@@ -86,27 +88,32 @@ public class OAuthFilter implements Filter {
         chain.doFilter(request, response);
     }
 
-    private static String bearerToken(HttpServletRequest request) {
+    /** The bearer value if it's a JWT, else null: an API key is 32 characters without dots. */
+    private static String accessToken(HttpServletRequest request) {
         String auth = request.getHeader("Authorization");
         if (auth == null || !auth.regionMatches(true, 0, "Bearer ", 0, 7)) {
             return null;
         }
         String token = auth.substring(7).trim();
-        return token.isEmpty() ? null : token;
+        String[] parts = token.split("\\.", -1);
+        if (parts.length != 3) {
+            return null;
+        }
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                return null;
+            }
+        }
+        return token;
     }
 
     /** 401 or 403 with a Bearer challenge (RFC 6750, RFC 9728). */
     private void challenge(HttpServletResponse response, int status, String error, String description) throws IOException {
-        StringBuilder header = new StringBuilder("Bearer ");
-        if (error != null) {
-            header.append("error=\"").append(error).append("\", ");
-        }
-        header.append("resource_metadata=\"").append(this.metadataUrl).append("\", scope=\"")
-                .append(OAuthSettings.LOOKUPS_SCOPE).append('"');
         response.setStatus(status);
-        response.setHeader("WWW-Authenticate", header.toString());
+        response.setHeader("WWW-Authenticate", "Bearer error=\"" + error + "\", resource_metadata=\""
+                + this.metadataUrl + "\", scope=\"" + OAuthSettings.LOOKUPS_SCOPE + '"');
         ObjectNode body = JSON.createObjectNode();
-        body.put("error", error != null ? error : "unauthorized");
+        body.put("error", error);
         body.put("error_description", description);
         write(response, body);
     }

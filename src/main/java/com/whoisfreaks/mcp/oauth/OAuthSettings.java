@@ -1,14 +1,16 @@
 package com.whoisfreaks.mcp.oauth;
 
 import java.net.URI;
+import java.util.List;
 import java.util.function.Function;
 
 /**
- * Settings for OAuth mode ({@code --oauth} or {@code MCP_AUTH=oauth}), read from the environment:
+ * Settings for OAuth sign-in on the hosted HTTP server, read from the environment. OAuth is on
+ * when OAUTH_ISSUER is set, and then the others are required too:
  *
  *   OAUTH_ISSUER          the authorization server, e.g. https://auth.whoisfreaks.com
- *   MCP_RESOURCE          this server's resource identifier, e.g. https://mcp-oauth.whoisfreaks.com;
- *                         access tokens must name it as their audience
+ *   MCP_RESOURCE          this server's address, e.g. https://mcp.whoisfreaks.com; access tokens must
+ *                         name it (or it plus /mcp) as their audience
  *   BILLING_URL           where the API key lookup lives, e.g. https://billing-backend.whoisfreaks.com
  *   BILLING_SERVER_TOKEN  the shared secret for that lookup (billing's oauth.mcp-server-token)
  *   OAUTH_JWKS_URI        optional: the issuer's signing keys, by default OAUTH_ISSUER/oauth2/jwks
@@ -18,14 +20,24 @@ public record OAuthSettings(String issuer, String resource, URI jwksUri, String 
     /** The scope an access token needs to run lookups. */
     public static final String LOOKUPS_SCOPE = "lookups";
     private static final String METADATA_PATH = "/.well-known/oauth-protected-resource";
+    private static final String MCP_PATH = "/mcp";
 
+    /** The settings, or null when OAUTH_ISSUER isn't set and the server takes API keys only. */
     public static OAuthSettings fromEnvironment() {
         return from(System::getenv);
     }
 
     static OAuthSettings from(Function<String, String> env) {
+        String issuerSetting = env.apply("OAUTH_ISSUER");
+        if (issuerSetting == null || issuerSetting.isBlank()) {
+            return null;
+        }
         String issuer = httpUrl(env, "OAUTH_ISSUER");
-        String resource = httpUrl(env, "MCP_RESOURCE");
+        String resource = stripTrailingSlash(httpUrl(env, "MCP_RESOURCE"));
+        if (!URI.create(resource).getRawPath().isEmpty()) {
+            throw new IllegalStateException("MCP_RESOURCE must be the server's address without a path, e.g. "
+                    + "https://mcp.whoisfreaks.com, not " + resource);
+        }
         String billingUrl = httpUrl(env, "BILLING_URL");
         String billingServerToken = required(env, "BILLING_SERVER_TOKEN");
         String jwksUri = env.apply("OAUTH_JWKS_URI");
@@ -37,18 +49,22 @@ public record OAuthSettings(String issuer, String resource, URI jwksUri, String 
     }
 
     /**
-     * Path of this server's protected resource metadata: the well-known path followed by the
-     * resource's own path (RFC 9728), so a resource of https://host/mcp has its metadata at
-     * /.well-known/oauth-protected-resource/mcp.
+     * The resource identifiers apps may ask a token for: the server's address, which is where the
+     * endpoint is, and the address plus /mcp, where it also is. An app's metadata lookup finds one or
+     * the other depending on which URL it was given.
      */
-    public String metadataPath() {
-        return METADATA_PATH + stripTrailingSlash(URI.create(this.resource).getRawPath());
+    public List<String> resources() {
+        return List.of(this.resource, this.resource + MCP_PATH);
     }
 
-    /** The metadata's full URL, which the 401 challenge points apps to. */
+    /** Where each resource's metadata is (RFC 9728: the well-known path, then the resource's own path). */
+    public String metadataPath(String resource) {
+        return METADATA_PATH + URI.create(resource).getRawPath();
+    }
+
+    /** The full URL of the server address's metadata, which the 401 challenge points apps to. */
     public String metadataUrl() {
-        URI resource = URI.create(this.resource);
-        return resource.getScheme() + "://" + resource.getRawAuthority() + metadataPath();
+        return this.resource + metadataPath(this.resource);
     }
 
     private static String httpUrl(Function<String, String> env, String name) {
@@ -68,7 +84,7 @@ public record OAuthSettings(String issuer, String resource, URI jwksUri, String 
     private static String required(Function<String, String> env, String name) {
         String value = env.apply(name);
         if (value == null || value.isBlank()) {
-            throw new IllegalStateException(name + " must be set in OAuth mode");
+            throw new IllegalStateException(name + " must be set when OAUTH_ISSUER is");
         }
         return value.trim();
     }

@@ -1,9 +1,8 @@
-# setup.yml, DNS part, for one hostname (dns_hostname: MCP_HOSTNAME, and MCP_OAUTH_HOSTNAME when it is
-# set). With CF_DNS_API_TOKEN: an A record dns_hostname -> the machine's IP in Cloudflare,
+# setup.yml, DNS part. With CF_DNS_API_TOKEN: an A record MCP_HOSTNAME -> the machine's IP in Cloudflare,
 # DNS only (not proxied), then a wait until it resolves. CF_ZONE may be the zone's name or its ID (the
 # 32 characters shown as "Zone ID" on the zone's overview page); an ID is used as it is. Without it, DNS is yours to set: this only
 # checks that the name resolves, since Let's Encrypt needs it to.
-- name: Point {{ dns_hostname }} at {{ ansible_host }} in Cloudflare
+- name: Point {{ mcp_hostname }} at {{ ansible_host }} in Cloudflare
   when: cf_dns_api_token | length > 0
   block:
     - name: Find the {{ cf_zone }} zone in Cloudflare
@@ -32,9 +31,9 @@
       ansible.builtin.set_fact:
         cf_zone_id: "{{ cf_zone if cf_zone_is_id else cf_zone_read.json.result[0].id }}"
 
-    - name: Read the DNS record for {{ dns_hostname }}
+    - name: Read the DNS record for {{ mcp_hostname }}
       ansible.builtin.uri:
-        url: "{{ cf_api_base }}/zones/{{ cf_zone_id }}/dns_records?type=A&name={{ dns_hostname }}"
+        url: "{{ cf_api_base }}/zones/{{ cf_zone_id }}/dns_records?type=A&name={{ mcp_hostname }}"
         headers:
           Authorization: "Bearer {{ cf_dns_api_token }}"
       register: cf_record_read
@@ -47,12 +46,12 @@
       ansible.builtin.assert:
         that: cf_record_read.json.success | default(false)
         fail_msg: >-
-          Couldn't read the DNS records of zone {{ cf_zone }}. Check that CF_ZONE is the zone {{ dns_hostname }} is in and
+          Couldn't read the DNS records of zone {{ cf_zone }}. Check that CF_ZONE is the zone {{ mcp_hostname }} is in and
           that the DNS token has DNS Edit on it. Cloudflare said:
           {{ cf_record_read.json.errors | default(cf_record_read.msg | default('nothing')) }}
         quiet: true
 
-    - name: Create or fix the record {{ dns_hostname }} -> {{ ansible_host }}
+    - name: Create or fix the record {{ mcp_hostname }} -> {{ ansible_host }}
       ansible.builtin.uri:
         url: >-
           {{ cf_api_base }}/zones/{{ cf_zone_id }}/dns_records{{
@@ -63,7 +62,7 @@
         body_format: json
         body:
           type: A
-          name: "{{ dns_hostname }}"
+          name: "{{ mcp_hostname }}"
           content: "{{ ansible_host }}"
           ttl: 1
           proxied: false
@@ -77,8 +76,8 @@
         or cf_record_read.json.result[0].content != ansible_host
         or cf_record_read.json.result[0].proxied
 
-    - name: Wait until {{ dns_hostname }} resolves to {{ ansible_host }}
-      ansible.builtin.command: getent ahostsv4 {{ dns_hostname }}
+    - name: Wait until {{ mcp_hostname }} resolves to {{ ansible_host }}
+      ansible.builtin.command: getent ahostsv4 {{ mcp_hostname }}
       register: node_dns
       until: ansible_host in node_dns.stdout
       retries: 30
@@ -87,11 +86,11 @@
       check_mode: false
       when: not ansible_check_mode
 
-- name: Check {{ dns_hostname }} resolves
+- name: Check {{ mcp_hostname }} resolves
   when: cf_dns_api_token | length == 0
   block:
     - name: Look it up
-      ansible.builtin.command: getent ahostsv4 {{ dns_hostname }}
+      ansible.builtin.command: getent ahostsv4 {{ mcp_hostname }}
       register: own_dns
       failed_when: false
       changed_when: false
@@ -101,6 +100,6 @@
       ansible.builtin.assert:
         that: own_dns.rc == 0
         fail_msg: >-
-          {{ dns_hostname }} doesn't resolve. Point it at {{ ansible_host }} (an A record) and run setup.yml again, or
+          {{ mcp_hostname }} doesn't resolve. Point it at {{ ansible_host }} (an A record) and run setup.yml again, or
           put CF_DNS_API_TOKEN in ansible/.env to have setup.yml create the record in Cloudflare.
         quiet: true
