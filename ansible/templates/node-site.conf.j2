@@ -9,6 +9,14 @@ server {
 
     # A JSON-RPC request is small; the server itself refuses bodies over 1 MB.
     client_max_body_size 1m;
+{% if openai_apps_challenge %}
+
+    # OpenAI's plugin portal fetches this to check that we control this host (OPENAI_APPS_CHALLENGE).
+    location = /.well-known/openai-apps-challenge {
+        default_type text/plain;
+        return 200 "{{ openai_apps_challenge }}";
+    }
+{% endif %}
 
     location / {
         limit_req zone=mcp burst={{ nginx_rate_burst }} nodelay;

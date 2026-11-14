@@ -9,7 +9,7 @@ dotenv: >-
 dotenv_unquoted: >-
   {{ dict(dotenv.keys() | zip(dotenv.values() | map('regex_replace', '^([\x27"])(.*)\1$', '\2'))) }}
 setting_names: [MCP_SERVER_IP, MCP_SERVER_USER, MCP_HOSTNAME, CF_DNS_API_TOKEN, CF_ZONE, GIT_USERNAME, GIT_TOKEN,
-                NGINX_DENIED_IPS, OAUTH_ISSUER, BILLING_URL, BILLING_SERVER_TOKEN]
+                NGINX_DENIED_IPS, OAUTH_ISSUER, BILLING_URL, BILLING_SERVER_TOKEN, OPENAI_APPS_CHALLENGE]
 cfg: >-
   {{ dict(setting_names | zip(query('ansible.builtin.env', *setting_names)))
      | combine(dotenv_unquoted | dict2items | selectattr('value') | items2dict) }}
@@ -34,6 +34,10 @@ nginx_denied_ips: "{{ cfg.NGINX_DENIED_IPS.split(',') | map('trim') | select | l
 oauth_issuer: "{{ cfg.OAUTH_ISSUER | trim }}"          # the authorization server, e.g. https://auth.example.com
 oauth_billing_url: "{{ cfg.BILLING_URL | trim }}"      # where the server trades access tokens for API keys
 oauth_enabled: "{{ oauth_issuer | length > 0 }}"
+
+# OpenAI's plugin portal checks that we control MCP_HOSTNAME (README.md, "OpenAI domain verification")
+# by fetching https://<MCP_HOSTNAME>/.well-known/openai-apps-challenge. Empty: nginx doesn't answer there.
+openai_apps_challenge: "{{ cfg.OPENAI_APPS_CHALLENGE | trim }}"
 
 # The server is healthy when its /health answers node_check_status at both of these.
 public_check_url: "https://{{ mcp_hostname }}/health"  # from this machine, the way users reach it

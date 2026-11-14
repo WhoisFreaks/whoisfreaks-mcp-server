@@ -43,6 +43,7 @@ Every secret, and everything that names our server (its IP and hostname), lives 
 | `OAUTH_ISSUER` | Turns on OAuth sign-in (section 9): the authorization server that signs users in, e.g. `https://auth.example.com`. Empty: API keys only | optional |
 | `BILLING_URL` | Billing's backend, where the server trades access tokens for API keys, e.g. `https://billing-backend.example.com` | with `OAUTH_ISSUER` |
 | `BILLING_SERVER_TOKEN` | Secret. Shared with billing for that trade (billing's `oauth.mcp-server-token`); letters and digits only | with `OAUTH_ISSUER` |
+| `OPENAI_APPS_CHALLENGE` | The domain verification token OpenAI's plugin portal shows when you connect the server (section 10). Empty: nginx doesn't serve it | optional |
 
 `inventory.py` builds the inventory (one host, `mcp`) from `MCP_SERVER_IP` and `MCP_SERVER_USER`. On the server, git credentials (when set) sit in a temporary file only the login user can read, removed after each git command. No playbook prints a secret.
 
@@ -145,6 +146,18 @@ ChatGPT and Codex connect to MCP servers only with OAuth, so the WhoisFreaks plu
 **Turn it off.** Empty `OAUTH_ISSUER` and run `ansible-playbook setup.yml --tags app`: it removes the file and restarts the service, which then takes API keys only.
 
 If the service doesn't come back after turning it on, `journalctl -u whoisfreaks-mcp` names the setting that's missing or wrong: the server refuses to start with OAuth half set up.
+
+## 10. OpenAI domain verification
+
+Before OpenAI's plugin portal lets you connect the server (**Plugins** → **MCPs** → **Connect**), it checks that you control `MCP_HOSTNAME`: it shows a token, then fetches `https://<MCP_HOSTNAME>/.well-known/openai-apps-challenge`, which must answer with exactly that token.
+
+Put the token in `OPENAI_APPS_CHALLENGE` in `.env` (section 2), then run:
+
+```bash
+ansible-playbook setup.yml --tags nginx
+```
+
+nginx then answers that one address with the token, as plain text, and everything else as before. Check it with `curl https://<MCP_HOSTNAME>/.well-known/openai-apps-challenge`, then continue in the portal. The address can stay in place; to remove it, empty `OPENAI_APPS_CHALLENGE` and run the same command.
 
 ## Files
 

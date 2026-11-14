@@ -9,6 +9,7 @@
 - Signing in with OAuth, next to API keys, at the same address, for the WhoisFreaks plugin in ChatGPT and Codex, which can only connect with OAuth. On when `OAUTH_ISSUER` is set (with `MCP_RESOURCE`, `BILLING_URL` and `BILLING_SERVER_TOKEN`). A bearer value that is a JWT is an access token from the WhoisFreaks authorization server: it is checked and traded for the account's API key at billing (cached for up to a minute), and an unusable one gets 401 with a challenge pointing to `/.well-known/oauth-protected-resource`. API keys, and requests without credentials, are handled as before: no 401
 - `deploy/docker-compose.yml` passes the OAuth variables through, and tests (`mvn test`)
 - `ansible/` writes the OAuth settings to a file only root can read when `OAUTH_ISSUER` is set in its `.env`, and removes it when it isn't; the service reads it at start
+- `ansible/` serves OpenAI's domain verification token at `/.well-known/openai-apps-challenge` when `OPENAI_APPS_CHALLENGE` is set in its `.env`, for connecting the server in OpenAI's plugin portal
 
 ## [2.1.0] - 2026-11-13
 

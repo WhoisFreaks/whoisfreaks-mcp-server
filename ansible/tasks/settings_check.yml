@@ -17,3 +17,12 @@
       BILLING_SERVER_TOKEN, in ansible/.env (README.md, "OAuth sign-in"). Nothing changed.
     quiet: true
   when: oauth_enabled | bool
+
+- name: Check OPENAI_APPS_CHALLENGE, which nginx serves as it is
+  ansible.builtin.assert:
+    that: openai_apps_challenge is match('^[A-Za-z0-9._~+/=:-]+$')
+    fail_msg: >-
+      OPENAI_APPS_CHALLENGE in ansible/.env should be the token OpenAI's plugin portal shows, exactly:
+      letters, digits and . _ ~ + / = : - only (README.md, "OpenAI domain verification"). Nothing changed.
+    quiet: true
+  when: openai_apps_challenge | length > 0
