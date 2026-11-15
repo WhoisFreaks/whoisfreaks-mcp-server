@@ -13,6 +13,7 @@
 
 ### Changed
 - `dnsLookup` says a domain's SPF policy comes back as an SPF entry (type 99) although it's published as a TXT record, and that records reached through a CNAME, such as a Microsoft 365 DKIM key, come back under the target's name. `domainReputation` says its DKIM check probes only a few selectors and can miss a key that exists
+- Corrected the `domainAvailability` description: with suggestions, the list includes the domain asked about, and each name is AVAILABLE or UNAVAILABLE, not true or false
 
 ## [2.1.0] - 2026-11-13
 

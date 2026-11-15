@@ -81,9 +81,9 @@ public class DomainTools {
                         one name across many extensions, use bulkDomainAvailability. For details about who owns a registered
                         domain use liveWhoisLookup.
                         Costs 1 credit, plus 1 credit per 5 suggestions.
-                        Returns the availability (AVAILABLE or UNAVAILABLE), or with suggestions a list of names each with
-                        domainAvailability true or false. Availability can change at any moment, and this check does not reserve
-                        the domain.
+                        Returns the availability (AVAILABLE or UNAVAILABLE). With suggestions it returns a list of names instead,
+                        the domain asked about among them, each AVAILABLE or UNAVAILABLE. Availability can change at any moment,
+                        and this check does not reserve the domain.
                         """,
                         schema),
                 (context, request) -> {
