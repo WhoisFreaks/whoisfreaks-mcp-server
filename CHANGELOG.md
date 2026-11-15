@@ -11,6 +11,9 @@
 - `ansible/` writes the OAuth settings to a file only root can read when `OAUTH_ISSUER` is set in its `.env`, and removes it when it isn't; the service reads it at start
 - `ansible/` serves OpenAI's domain verification token at `/.well-known/openai-apps-challenge` when `OPENAI_APPS_CHALLENGE` is set in its `.env`, for connecting the server in OpenAI's plugin portal
 
+### Changed
+- `dnsLookup` says a domain's SPF policy comes back as an SPF entry (type 99) although it's published as a TXT record, and that records reached through a CNAME, such as a Microsoft 365 DKIM key, come back under the target's name. `domainReputation` says its DKIM check probes only a few selectors and can miss a key that exists
+
 ## [2.1.0] - 2026-11-13
 
 Brought in line with the WhoisFreaks OpenAPI spec (version 2026-11-13.3).

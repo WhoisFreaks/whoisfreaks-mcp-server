@@ -86,8 +86,11 @@ public class DnsTools {
                         at once use bulkDnsLookup.
                         type=all (the default) returns every record type in one call; pass one type or a short list such as mx,txt
                         to keep the result small. cnameDepth follows CNAME chains, for example for www hosts behind a CDN.
-                        Returns the records grouped by type. A domain with no records of the requested type returns an empty list
-                        or a "no data found" message.
+                        Returns the records grouped by type. Records reached through a CNAME carry the target's name: a DKIM key
+                        published through one, as Microsoft 365 does, comes back under the provider's host name. A domain's SPF
+                        policy (v=spf1) is listed as an SPF entry (type 99), apart from its other TXT records, even though domains
+                        publish it as an ordinary TXT record; the label isn't a sign of the obsolete SPF record type. A domain
+                        with no records of the requested type returns an empty list or a "no data found" message.
                         """,
                         schema),
                 (context, request) -> {

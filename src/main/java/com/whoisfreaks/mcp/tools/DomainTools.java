@@ -400,7 +400,9 @@ public class DomainTools {
                         Assess how risky a domain is, live: a verdict (safe, low_risk, suspicious, malicious or unknown) with its
                         confidence and severity, a trust score with the positive and negative signals behind it, DGA
                         (algorithmically generated name) analysis, matches in threat-intelligence feeds, email security (SPF,
-                        DKIM, DMARC and mail servers), and a recommended action.
+                        DKIM, DMARC and mail servers), and a recommended action. Its DKIM check probes only a few selectors and can
+                        report DKIM missing when a key exists, for example a Microsoft 365 key published through a CNAME; to
+                        confirm DKIM, look up <selector>._domainkey.<domain> with dnsLookup.
                         Use this to triage a suspicious domain from an email, a log or a domainDiscovery result before deciding
                         whether to block it. For the domain's owner use liveWhoisLookup, for its certificate sslLookup, and for an
                         IP address ipSecurity.
