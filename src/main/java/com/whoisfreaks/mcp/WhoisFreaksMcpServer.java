@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -157,9 +158,10 @@ public class WhoisFreaksMcpServer {
     /** Behaviour shared by every tool, appended to each description. */
     private static final String BEHAVIOR_NOTE = """
 
-            Behavior: read-only. Makes one request to the WhoisFreaks API using your WhoisFreaks API key \
-            (the WHOISFREAKS_API_KEY environment variable, or on the hosted server the key sent with the \
-            request) and uses that account's API credits; nothing is created or changed. \
+            Behavior: read-only. Makes one request to the WhoisFreaks API for your WhoisFreaks account \
+            (identified by the WHOISFREAKS_API_KEY environment variable or, on the hosted server, by the \
+            API key sent with the request or the account connected with OAuth) and uses that account's API \
+            credits; nothing is created or changed. \
             If the call fails, the result is a short message instead of data, for example: key invalid, \
             or plan or credits used up (HTTP 401), domain extension not supported (HTTP 403), no data \
             found (HTTP 404), or rate limit reached (HTTP 429).""";
@@ -168,10 +170,13 @@ public class WhoisFreaksMcpServer {
     private static final Map<String, String> BEHAVIOR_NOTES = Map.of(
             "apiKeyUsage", """
 
-            Behavior: read-only. Reads the usage of your WhoisFreaks API key (the WHOISFREAKS_API_KEY \
-            environment variable, or on the hosted server the key sent with the request); it looks \
-            nothing up and changes nothing. If the key is invalid the result is a short message \
-            (HTTP 401) instead of data.""");
+            Behavior: read-only. Reads the usage of your WhoisFreaks account's API key (identified by the \
+            WHOISFREAKS_API_KEY environment variable or, on the hosted server, by the API key sent with the \
+            request or the account connected with OAuth); it looks nothing up and changes nothing. If the \
+            key is invalid the result is a short message (HTTP 401) instead of data.""");
+
+    /** Tools that only read the caller's own WhoisFreaks account, not open-ended internet data. */
+    private static final Set<String> ACCOUNT_TOOLS = Set.of("apiKeyUsage");
 
     private static final Map<String, String> TITLES = Map.ofEntries(
             Map.entry("liveWhoisLookup", "Live WHOIS lookup"),
@@ -198,8 +203,8 @@ public class WhoisFreaksMcpServer {
             Map.entry("apiKeyUsage", "API key usage"));
 
     /**
-     * Adds a human-readable title, MCP tool annotations (read-only, non-destructive,
-     * calls an external API) and the shared behaviour note to a tool definition.
+     * Adds a human-readable title, MCP tool annotations (read-only, non-destructive, and
+     * open-world except for the account tools) and the shared behaviour note to a tool definition.
      */
     private static McpStatelessServerFeatures.SyncToolSpecification withBehaviorInfo(
             McpStatelessServerFeatures.SyncToolSpecification spec) {
@@ -210,7 +215,8 @@ public class WhoisFreaksMcpServer {
                 .title(title)
                 .description(tool.description().strip() + BEHAVIOR_NOTES.getOrDefault(tool.name(), BEHAVIOR_NOTE))
                 .inputSchema(tool.inputSchema())
-                .annotations(new McpSchema.ToolAnnotations(title, true, false, true, true, null))
+                .annotations(new McpSchema.ToolAnnotations(title, true, false, true,
+                        !ACCOUNT_TOOLS.contains(tool.name()), null))
                 .build();
         return new McpStatelessServerFeatures.SyncToolSpecification(annotated, spec.callHandler());
     }
