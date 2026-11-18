@@ -62,9 +62,15 @@ public record OAuthSettings(String issuer, String resource, URI jwksUri, String 
         return METADATA_PATH + URI.create(resource).getRawPath();
     }
 
-    /** The full URL of the server address's metadata, which the 401 challenge points apps to. */
+    /** The bare server address's metadata URL, used in the startup log; the 401 challenge uses
+     *  {@link #metadataUrl(String)} so it matches the exact URL the client called. */
     public String metadataUrl() {
-        return this.resource + metadataPath(this.resource);
+        return metadataUrl(this.resource);
+    }
+
+    /** The metadata URL for a particular resource identifier, including its endpoint path when present. */
+    public String metadataUrl(String resource) {
+        return this.resource + metadataPath(resource);
     }
 
     private static String httpUrl(Function<String, String> env, String name) {
