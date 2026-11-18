@@ -1,7 +1,10 @@
 package com.whoisfreaks.mcp.oauth;
 
+import java.io.IOException;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -10,16 +13,15 @@ import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import java.io.IOException;
-
 /**
- * Handles the requests that carry an OAuth access token: a bearer value that is a JWT (three
- * dot-separated parts), which an API key never is. Every other request (an API key in any of
- * its forms, or no credentials) passes through untouched to the API-key handling, so clients
- * that send keys see no difference, and none of them ever gets a 401 from here.
+ * Handles OAuth access tokens on the hosted HTTP server. A Bearer value with three non-empty
+ * dot-separated parts is treated as a JWT access token; key-style Bearer values, X-API-Key headers
+ * and ?apiKey query parameters continue through the API-key path, whether or not OAuth is enabled.
+ * A Bearer value with dots that is not a well-formed JWT gets 401 invalid_token. Requests with no
+ * credentials receive a 401 protected-resource challenge so clients can discover the sign-in flow.
  *
  * An unusable token gets 401 with a challenge pointing to this server's protected resource
- * metadata, so apps such as ChatGPT refresh it or sign the user in again (403 for a token
+ * metadata, so apps such as Claude or ChatGPT refresh it or sign the user in again (403 for a token
  * without the lookups scope). A valid token is traded for the account's API key
  * ({@link BillingApiKeys}), passed on as a request attribute. An account that can't run lookups
  * still gets through, with the reason as an attribute instead, so tools explain it rather than
@@ -33,17 +35,18 @@ public class OAuthFilter implements Filter {
     /** Request attributes the MCP transport's context extractor reads. */
     public static final String API_KEY_ATTRIBUTE = "whoisfreaks.apiKey";
     public static final String KEY_PROBLEM_ATTRIBUTE = "whoisfreaks.keyProblem";
+    public static final String ORIGINAL_REQUEST_URI_ATTRIBUTE = "whoisfreaks.originalRequestUri";
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final AccessTokenVerifier verifier;
     private final BillingApiKeys apiKeys;
-    private final String metadataUrl;
+    private final OAuthSettings settings;
 
     public OAuthFilter(AccessTokenVerifier verifier, BillingApiKeys apiKeys, OAuthSettings settings) {
         this.verifier = verifier;
         this.apiKeys = apiKeys;
-        this.metadataUrl = settings.metadataUrl();
+        this.settings = settings;
     }
 
     @Override
@@ -53,7 +56,20 @@ public class OAuthFilter implements Filter {
 
         String token = accessToken(request);
         if (token == null) {
-            chain.doFilter(request, response);
+            if (hasApiKey(request)) {
+                chain.doFilter(request, response);
+            } else {
+                String auth = request.getHeader("Authorization");
+                if (auth != null && auth.regionMatches(true, 0, "Bearer ", 0, 7)
+                        && !auth.substring(7).trim().isEmpty()) {
+                    // The Bearer value was meant as an access token but isn't a well-formed JWT.
+                    challenge(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_token",
+                            "The access token is malformed.", request);
+                } else {
+                    challenge(response, HttpServletResponse.SC_UNAUTHORIZED, null,
+                            "A WhoisFreaks API key or OAuth access token is required.", request);
+                }
+            }
             return;
         }
 
@@ -62,9 +78,9 @@ public class OAuthFilter implements Filter {
             verified = this.verifier.verify(token);
         } catch (AccessTokenVerifier.InvalidTokenException e) {
             if (e.insufficientScope()) {
-                challenge(response, HttpServletResponse.SC_FORBIDDEN, "insufficient_scope", e.getMessage());
+                challenge(response, HttpServletResponse.SC_FORBIDDEN, "insufficient_scope", e.getMessage(), request);
             } else {
-                challenge(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_token", e.getMessage());
+                challenge(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_token", e.getMessage(), request);
             }
             return;
         } catch (AccessTokenVerifier.KeysUnavailableException e) {
@@ -79,16 +95,19 @@ public class OAuthFilter implements Filter {
         } else if (resolution instanceof BillingApiKeys.Refused refused) {
             request.setAttribute(KEY_PROBLEM_ATTRIBUTE, refused.message());
         } else if (resolution instanceof BillingApiKeys.InvalidToken) {
-            challenge(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_token", "The access token was revoked.");
+            challenge(response, HttpServletResponse.SC_UNAUTHORIZED, "invalid_token", "The access token was revoked.", request);
+            return;
+        } else if (resolution instanceof BillingApiKeys.Failed failed) {
+            serverError(response, failed.message());
             return;
         } else {
-            serverError(response, ((BillingApiKeys.Failed) resolution).message());
+            serverError(response, BillingApiKeys.UNAVAILABLE);
             return;
         }
         chain.doFilter(request, response);
     }
 
-    /** The bearer value if it's a JWT, else null: an API key is 32 characters without dots. */
+    /** A JWT is three non-empty dot-separated parts; anything else is not an access token candidate. */
     private static String accessToken(HttpServletRequest request) {
         String auth = request.getHeader("Authorization");
         if (auth == null || !auth.regionMatches(true, 0, "Bearer ", 0, 7)) {
@@ -107,13 +126,40 @@ public class OAuthFilter implements Filter {
         return token;
     }
 
+    /** All three API-key forms keep working alongside OAuth, so legacy clients need no change. */
+    private static boolean hasApiKey(HttpServletRequest request) {
+        String auth = request.getHeader("Authorization");
+        if (auth != null && auth.regionMatches(true, 0, "Bearer ", 0, 7)
+                && !auth.substring(7).trim().isEmpty() && !auth.substring(7).contains(".")) {
+            return true;
+        }
+        String apiKey = request.getHeader("X-API-Key");
+        if (apiKey != null && !apiKey.isBlank()) {
+            return true;
+        }
+        String queryKey = request.getParameter("apiKey");
+        return queryKey != null && !queryKey.isBlank();
+    }
+
     /** 401 or 403 with a Bearer challenge (RFC 6750, RFC 9728). */
-    private void challenge(HttpServletResponse response, int status, String error, String description) throws IOException {
+    private void challenge(HttpServletResponse response, int status, String error, String description,
+                          HttpServletRequest request) throws IOException {
         response.setStatus(status);
-        response.setHeader("WWW-Authenticate", "Bearer error=\"" + error + "\", resource_metadata=\""
-                + this.metadataUrl + "\", scope=\"" + OAuthSettings.LOOKUPS_SCOPE + '"');
+        String requestUri = request.getAttribute(ORIGINAL_REQUEST_URI_ATTRIBUTE) instanceof String original
+            ? original : request.getRequestURI();
+        String resource = this.settings.resource();
+        if ("/mcp".equals(requestUri)) {
+            resource += "/mcp";
+        }
+        StringBuilder challenge = new StringBuilder("Bearer ");
+        if (error != null) {
+            challenge.append("error=\"").append(error).append("\", ");
+        }
+        challenge.append("resource_metadata=\"").append(this.settings.metadataUrl(resource))
+                .append("\", scope=\"").append(OAuthSettings.LOOKUPS_SCOPE).append('"');
+        response.setHeader("WWW-Authenticate", challenge.toString());
         ObjectNode body = JSON.createObjectNode();
-        body.put("error", error);
+        body.put("error", error == null ? "unauthorized" : error);
         body.put("error_description", description);
         write(response, body);
     }

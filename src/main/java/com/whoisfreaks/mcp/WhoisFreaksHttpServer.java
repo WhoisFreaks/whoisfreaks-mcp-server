@@ -1,5 +1,25 @@
 package com.whoisfreaks.mcp;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.eclipse.jetty.ee10.servlet.FilterHolder;
+import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
+import org.eclipse.jetty.ee10.servlet.ServletHolder;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -8,6 +28,7 @@ import com.whoisfreaks.mcp.oauth.BillingApiKeys;
 import com.whoisfreaks.mcp.oauth.OAuthFilter;
 import com.whoisfreaks.mcp.oauth.OAuthSettings;
 import com.whoisfreaks.mcp.oauth.ProtectedResourceMetadataServlet;
+
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpStatelessServerFeatures;
@@ -27,25 +48,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
-import org.eclipse.jetty.ee10.servlet.FilterHolder;
-import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
-import org.eclipse.jetty.ee10.servlet.ServletHolder;
-import org.eclipse.jetty.server.HttpConfiguration;
-import org.eclipse.jetty.server.HttpConnectionFactory;
-import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.ServerConnector;
-
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Hosted, multi-user MCP server over Streamable HTTP (stateless).
@@ -59,21 +61,22 @@ import java.util.Set;
  * Every tool call must carry the caller's own WhoisFreaks API key, in one of:
  *   Authorization: Bearer <key>      (Claude Code, Cursor, VS Code, ...)
  *   X-API-Key: <key>
- *   ?apiKey=<key> query parameter    (clients that cannot send headers, e.g. claude.ai custom connectors)
+ *   ?apiKey=<key> query parameter    (legacy clients; works alongside OAuth)
  *
  * The key is forwarded to api.whoisfreaks.com for that request only; it is never stored or logged.
  *
- * Connecting and listing tools work without a key; a tool call without one returns an error that
- * tells the user how to add it. (Answering 401 instead makes MCP clients start an OAuth sign-in,
- * which hides the real problem from a user who only forgot their key.)
+ * Without OAuth, connecting and listing tools work without a key; a tool call without one returns
+ * an error that tells the user how to add it. With OAuth enabled, unauthenticated MCP requests get
+ * a 401 challenge so clients such as Claude can discover the sign-in flow.
  *
  * With OAUTH_ISSUER set (see {@link OAuthSettings}), users can also sign in with OAuth instead of
- * sending a key, which is how the WhoisFreaks plugin in ChatGPT and Codex connects:
+ * sending a key, which is how the WhoisFreaks connector in Claude, ChatGPT, and Codex connects:
  *   - a bearer value that is a JWT is an access token ({@link OAuthFilter}): it is checked and traded
  *     for the account's API key at billing, and an unusable one gets 401 with a challenge
  *   - GET /.well-known/oauth-protected-resource (and the same with /mcp) tells apps where users sign
  *     in (RFC 9728)
- * API keys, and requests without credentials, are handled exactly as without OAuth.
+ * API keys (headers or query parameter) keep working with OAuth enabled, on the same endpoint;
+ * requests without credentials receive the discovery challenge.
  */
 public class WhoisFreaksHttpServer {
 
@@ -96,7 +99,7 @@ public class WhoisFreaksHttpServer {
             Get a free key at https://billing.whoisfreaks.com/signup""";
     private static final String OR_SIGN_IN = """
 
-            In ChatGPT or Codex, install the WhoisFreaks plugin and connect your WhoisFreaks account instead.""";
+                In Claude, ChatGPT, or Codex, connect the WhoisFreaks account with OAuth instead.""";
 
     /** Serves until the process stops; {@code oauth} is null when the server takes API keys only. */
     public static void run(int port, OAuthSettings oauth) throws Exception {
@@ -111,7 +114,8 @@ public class WhoisFreaksHttpServer {
                     // A signed-in request's key comes from billing (OAuthFilter); any other request's from itself.
                     String signedInKey = attribute(request, OAuthFilter.API_KEY_ATTRIBUTE);
                     String problem = attribute(request, OAuthFilter.KEY_PROBLEM_ATTRIBUTE);
-                    String apiKey = signedInKey.isEmpty() && problem.isEmpty() ? extractApiKey(request) : signedInKey;
+                    String apiKey = signedInKey.isEmpty() && problem.isEmpty()
+                            ? extractApiKey(request) : signedInKey;
                     return McpTransportContext.create(Map.of(API_KEY, apiKey, KEY_PROBLEM, problem));
                 })
                 .build();
@@ -207,7 +211,7 @@ public class WhoisFreaksHttpServer {
         return value instanceof String text ? text : "";
     }
 
-    /** Returns the caller's API key from the Authorization header, X-API-Key header, or apiKey query parameter. */
+    /** Returns the caller's API key from a header or the legacy query parameter, in either mode. */
     static String extractApiKey(HttpServletRequest request) {
         String auth = request.getHeader("Authorization");
         if (auth != null && auth.regionMatches(true, 0, "Bearer ", 0, 7) && !auth.substring(7).isBlank()) {
@@ -262,10 +266,13 @@ public class WhoisFreaksHttpServer {
                 ObjectNode info = JSON.createObjectNode();
                 info.put("name", WhoisFreaksMcpServer.SERVER_NAME);
                 info.put("version", WhoisFreaksMcpServer.serverVersion());
-                info.put("description", "WhoisFreaks MCP server. Add this URL to an MCP client and send your "
+                String description = "WhoisFreaks MCP server. Add this URL to an MCP client and send your "
                         + "WhoisFreaks API key as 'Authorization: Bearer <key>', an 'X-API-Key' header, "
-                        + "or an '?apiKey=' query parameter."
-                        + (oauth ? " In ChatGPT or Codex, install the WhoisFreaks plugin and connect your account instead." : ""));
+                        + "or an '?apiKey=' query parameter.";
+                if (oauth) {
+                    description += " In Claude, ChatGPT, or Codex, connect your account with OAuth instead.";
+                }
+                info.put("description", description);
                 info.put("transport", "streamable-http");
                 info.put("documentation", "https://github.com/WhoisFreaks/whoisfreaks-mcp-server");
                 info.put("apiKey", "https://billing.whoisfreaks.com/signup");
@@ -300,20 +307,24 @@ public class WhoisFreaksHttpServer {
                 return;
             }
             JsonNode id = message.get("id");
-            String method = message.path("method").asText("");
+            String method = message.path("method").asText();
             if (id != null && !id.isNull() && !METHODS.contains(method)) {
                 writeError(response, HttpServletResponse.SC_OK, id, -32601, "Method not found: " + method);
                 return;
             }
 
             BufferedResponse buffered = new BufferedResponse(response);
+            request.setAttribute(OAuthFilter.ORIGINAL_REQUEST_URI_ATTRIBUTE, request.getRequestURI());
             chain.doFilter(new CachedBodyRequest(request, body), buffered);
 
             String out = buffered.body();
             if (buffered.getStatus() >= 400 && out.contains("\"stackTrace\"")) {
                 String detail;
                 try {
-                    detail = JSON.readTree(out).path("message").asText("Request failed.");
+                    detail = JSON.readTree(out).path("message").asText();
+                    if (detail.isBlank()) {
+                        detail = "Request failed.";
+                    }
                 } catch (IOException e) {
                     detail = "Request failed.";
                 }

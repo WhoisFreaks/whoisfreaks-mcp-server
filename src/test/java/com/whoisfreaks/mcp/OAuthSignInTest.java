@@ -1,26 +1,5 @@
 package com.whoisfreaks.mcp;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nimbusds.jose.JOSEException;
-import com.nimbusds.jose.JWSAlgorithm;
-import com.nimbusds.jose.JWSHeader;
-import com.nimbusds.jose.crypto.RSASSASigner;
-import com.nimbusds.jose.jwk.JWKSet;
-import com.nimbusds.jose.jwk.RSAKey;
-import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
-import com.whoisfreaks.mcp.oauth.OAuthSettings;
-import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.ServerConnector;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -38,14 +17,35 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.junit.jupiter.api.AfterAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import com.whoisfreaks.mcp.oauth.OAuthSettings;
 
 /**
  * One server taking API keys and OAuth access tokens side by side: the real Jetty server with its
  * filters, against a local stand-in for the authorization server's JWKS and billing's API key lookup.
- * No request here reaches api.whoisfreaks.com: only tools/list runs with a key.
+ * No request here reaches api.whoisfreaks.com; tool calls with a valid key are not exercised.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OAuthSignInTest {
@@ -108,30 +108,61 @@ class OAuthSignInTest {
         assertEquals("lookups", root.path("scopes_supported").path(0).asText());
     }
 
-    // ---- API keys and no credentials: as without OAuth
+    // ---- API keys and OAuth discovery
 
     @Test
-    void requestWithoutCredentialsIsServedAsBefore() throws Exception {
-        HttpResponse<String> initialize = post(Map.of(), "initialize", INITIALIZE);
-        HttpResponse<String> call = post(Map.of(), "tools/call", CALL_LOOKUP);
+    void requestWithoutCredentialsGetsPathSpecificOAuthChallenge() throws Exception {
+        HttpResponse<String> root = postTo("/", Map.of(), "initialize", INITIALIZE);
+        HttpResponse<String> mcp = post(Map.of(), "initialize", INITIALIZE);
 
-        assertEquals(200, initialize.statusCode(), initialize.body());
-        assertFalse(initialize.headers().firstValue("WWW-Authenticate").isPresent());
-        JsonNode result = JSON.readTree(call.body()).path("result");
-        assertTrue(result.path("isError").asBoolean(), call.body());
-        String text = result.path("content").path(0).path("text").asText();
-        assertTrue(text.contains("X-API-Key") && text.contains("WhoisFreaks plugin"), text);
+        assertEquals(401, root.statusCode(), root.body());
+        assertTrue(root.headers().firstValue("WWW-Authenticate").orElse("")
+                .contains("resource_metadata=\"" + RESOURCE + "/.well-known/oauth-protected-resource\""));
+        assertEquals(401, mcp.statusCode(), mcp.body());
+        assertTrue(mcp.headers().firstValue("WWW-Authenticate").orElse("")
+                .contains("resource_metadata=\"" + RESOURCE + "/.well-known/oauth-protected-resource/mcp\""));
+        assertTrue(mcp.headers().firstValue("WWW-Authenticate").orElse("").contains("scope=\"lookups\""));
     }
 
     @Test
-    void apiKeysWorkAlongsideOAuth() throws Exception {
-        HttpResponse<String> header = post(Map.of("X-API-Key", API_KEY), "tools/list", "{}");
+    void apiKeyInQueryWorksAlongsideOAuth() throws Exception {
+        int billingCallsBefore = billingCallCount();
+        // Without a key, initialize gets 401 (see the challenge test); with ?apiKey= it must pass.
+        HttpResponse<String> mcp = postTo("/mcp?apiKey=" + API_KEY, Map.of(), "initialize", INITIALIZE);
+        HttpResponse<String> root = postTo("/?apiKey=" + API_KEY, Map.of(), "initialize", INITIALIZE);
+
+        assertEquals(200, mcp.statusCode(), mcp.body());
+        assertEquals(200, root.statusCode(), root.body());
+        assertEquals(billingCallsBefore, billingCallCount(), "query-key requests must not call billing's OAuth lookup");
+    }
+
+    @Test
+    void oauthTokenStillWinsWhenAQueryKeyIsAlsoPresent() throws Exception {
+        String token = token(c -> { });
+
+        HttpResponse<String> response = postTo("/mcp?apiKey=" + API_KEY,
+                Map.of("Authorization", "Bearer " + token), "tools/list", "{}");
+
+        assertEquals(200, response.statusCode(), response.body());
+        assertEquals(1, billingCalls.get(token).get(), "the access token must be resolved at billing");
+    }
+
+    @Test
+    void malformedJwtGetsInvalidTokenChallenge() throws Exception {
+        // Two parts, not three: a corrupt token must still be reported as invalid_token, not as a key.
+        assertInvalidToken(post(Map.of("Authorization", "Bearer header.payload"), "initialize", INITIALIZE));
+    }
+
+    @Test
+    void legacyXApiKeyHeaderWorksAlongsideOAuth() throws Exception {
+        int billingCallsBefore = billingCallCount();
+        HttpResponse<String> header = post(Map.of("X-API-KEY", API_KEY), "tools/list", "{}");
         HttpResponse<String> bearer = post(Map.of("Authorization", "Bearer " + API_KEY), "tools/list", "{}");
 
         assertEquals(200, header.statusCode(), header.body());
         assertEquals(200, bearer.statusCode(), bearer.body());
         assertTrue(bearer.body().contains("liveWhoisLookup"));
-        assertTrue(billingCalls.isEmpty(), "billing is only asked about access tokens");
+        assertEquals(billingCallsBefore, billingCallCount(), "API-key requests must not call billing's OAuth lookup");
     }
 
     @Test
@@ -258,7 +289,7 @@ class OAuthSignInTest {
         assertEquals(401, response.statusCode(), response.body());
         String challenge = response.headers().firstValue("WWW-Authenticate").orElse("");
         assertTrue(challenge.startsWith("Bearer error=\"invalid_token\""), challenge);
-        assertTrue(challenge.contains("resource_metadata=\"" + RESOURCE + "/.well-known/oauth-protected-resource\""), challenge);
+        assertTrue(challenge.contains("resource_metadata=\"" + RESOURCE + "/.well-known/oauth-protected-resource/mcp\""), challenge);
         assertTrue(challenge.contains("scope=\"lookups\""), challenge);
     }
 
@@ -273,8 +304,16 @@ class OAuthSignInTest {
         return post(Map.of("Authorization", "Bearer " + token), method, params);
     }
 
+    private int billingCallCount() {
+        return billingCalls.values().stream().mapToInt(AtomicInteger::get).sum();
+    }
+
     private HttpResponse<String> post(Map<String, String> headers, String method, String params) throws Exception {
-        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(base + "/mcp"))
+        return postTo("/mcp", headers, method, params);
+    }
+
+    private HttpResponse<String> postTo(String path, Map<String, String> headers, String method, String params) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(base + path))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(rpc(method, params)));

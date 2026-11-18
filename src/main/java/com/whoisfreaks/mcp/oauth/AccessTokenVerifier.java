@@ -60,11 +60,15 @@ public class AccessTokenVerifier {
     AccessTokenVerifier(OAuthSettings settings, JWKSource<SecurityContext> keys) {
         this.processor.setJWSKeySelector(new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, keys));
         // Mutable sets: Nimbus asks them contains(null), which Set.of() answers with an exception.
-        this.processor.setJWTClaimsSetVerifier(new DefaultJWTClaimsVerifier<>(
+        DefaultJWTClaimsVerifier<SecurityContext> claimsVerifier = new DefaultJWTClaimsVerifier<>(
                 new HashSet<>(settings.resources()),
                 new JWTClaimsSet.Builder().issuer(settings.issuer()).build(),
                 new HashSet<>(List.of("sub", "exp")),
-                null));
+                null);
+        // Tolerate small clock drift between the issuer and this server, as documented in the
+        // token contract; Nimbus defaults to zero skew.
+        claimsVerifier.setMaxClockSkew(60);
+        this.processor.setJWTClaimsSetVerifier(claimsVerifier);
     }
 
     public VerifiedToken verify(String token) throws InvalidTokenException, KeysUnavailableException {

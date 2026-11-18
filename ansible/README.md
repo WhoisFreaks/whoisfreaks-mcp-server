@@ -137,7 +137,7 @@ The next `deploy.yml` installs `master` again, so revert the commit there too.
 
 ## 9. OAuth sign-in
 
-ChatGPT and Codex connect to MCP servers only with OAuth, so the WhoisFreaks plugin for them signs users in to their WhoisFreaks account instead of sending an API key (the main README, "Signing In with OAuth"). The same server at `MCP_HOSTNAME` does both: API keys keep working exactly as before, and a request without credentials still gets the usual "add your key" answer, never a 401.
+The WhoisFreaks MCP connector supports OAuth for Claude's hosted apps and for the existing ChatGPT/Codex clients (the main README, "Signing In with OAuth"). The same server at `MCP_HOSTNAME` accepts OAuth access tokens and API keys — `Authorization: Bearer <key>`, `X-API-Key`, or the legacy `?apiKey=` query parameter — at the same time. When OAuth is enabled, a request without any of them gets the 401 challenge Claude needs to discover sign-in. The query-string form keeps working in both modes; the shipped access log records requests without their query string so a key there is not logged.
 
 **Turn it on.** Set `OAUTH_ISSUER`, `BILLING_URL` and `BILLING_SERVER_TOKEN` in `.env` (section 2), then run `ansible-playbook setup.yml --tags app`. It writes them, with `MCP_RESOURCE=https://<MCP_HOSTNAME>`, to `/etc/whoisfreaks-mcp/oauth.env`, which only root can read (it holds `BILLING_SERVER_TOKEN`; Ansible never prints it), and restarts `whoisfreaks-mcp`, which systemd starts with that file. Deploys and `status.yml` stay as they are.
 

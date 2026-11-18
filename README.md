@@ -112,7 +112,7 @@ and send your WhoisFreaks API key ([get one free](https://billing.whoisfreaks.co
 |--------|---------|----------|
 | `Authorization` header | `Authorization: Bearer YOUR_API_KEY` | Claude Code, Cursor, VS Code, Windsurf, Continue |
 | `X-API-Key` header | `X-API-Key: YOUR_API_KEY` | Any client that supports custom headers |
-| Query parameter | `https://mcp.whoisfreaks.com/?apiKey=YOUR_API_KEY` | Clients without custom headers (claude.ai / Claude Desktop custom connectors) |
+| Query parameter | `https://mcp.whoisfreaks.com/?apiKey=YOUR_API_KEY` | Legacy clients that cannot send headers; works alongside OAuth |
 
 > Prefer a header when your client supports one — URLs with keys can end up in logs and history.
 
@@ -123,11 +123,13 @@ claude mcp add --transport http whoisfreaks https://mcp.whoisfreaks.com \
   --header "Authorization: Bearer YOUR_API_KEY"
 ```
 
-**claude.ai / Claude Desktop** — Settings → Connectors → **Add custom connector**, URL:
+**claude.ai / Claude Desktop remote connector** — Settings → Connectors → **Add custom connector**, URL:
 
 ```
-https://mcp.whoisfreaks.com/?apiKey=YOUR_API_KEY
+https://mcp.whoisfreaks.com/mcp
 ```
+
+Choose **Sign in** when Claude offers the authentication options. A `?apiKey=` in the URL still works for legacy API-key clients, but using it here would bill that key instead of the signed-in account. See [Signing In with OAuth](#signing-in-with-oauth) for the server-side setup required before Claude sign-in is available.
 
 **Cursor** (`~/.cursor/mcp.json`), **Windsurf**, and other JSON-configured clients:
 
@@ -156,13 +158,13 @@ https://mcp.whoisfreaks.com/?apiKey=YOUR_API_KEY
 }
 ```
 
-Without a key the server still connects and lists its tools, but every tool call returns an error explaining how to add one. API usage is billed to the key you send.
+With OAuth disabled, the server can connect and list tools without a key, while tool calls explain how to add one. With OAuth enabled, unauthenticated HTTP requests receive a 401 sign-in challenge. All three API-key forms — `Authorization: Bearer <key>`, `X-API-Key`, and `?apiKey=` — continue working alongside OAuth, so legacy clients need no change. API usage is billed to the account selected by the API key or OAuth sign-in.
 
 ---
 
 ## Signing In with OAuth
 
-ChatGPT and Codex connect to MCP servers only with OAuth, so the WhoisFreaks plugin for them signs users in to their WhoisFreaks account instead of sending an API key. The hosted server does both at the same address: set these variables and it also takes OAuth access tokens, while API keys keep working exactly as above.
+The hosted server supports OAuth for the WhoisFreaks connector in Claude's hosted apps (claude.ai, Claude Desktop remote connectors, mobile, and Cowork) and for the existing ChatGPT and Codex integration. Users sign in to their WhoisFreaks account instead of sending an API key. API-key headers keep working at the same endpoint. Claude Code uses its own native-client OAuth identity and is not covered by the Claude hosted-app client registration described here; API-key authentication remains available there.
 
 | Variable | Example | Description |
 |----------|---------|-------------|
@@ -172,11 +174,14 @@ ChatGPT and Codex connect to MCP servers only with OAuth, so the WhoisFreaks plu
 | `BILLING_SERVER_TOKEN` | — | The shared secret for that trade (billing's `oauth.mcp-server-token`) |
 | `OAUTH_JWKS_URI` | `OAUTH_ISSUER/oauth2/jwks` (default) | The authorization server's signing keys |
 
-With `OAUTH_ISSUER` set, the other three are required: the server won't start half set up. How it tells requests apart:
+With `OAUTH_ISSUER` set, the other required variables must also be set or the server refuses to start. How requests are handled:
 
-1. **An API key** (`Authorization: Bearer <key>`, `X-API-Key` or `?apiKey=`), or **no credentials at all**: handled exactly as without OAuth. In particular, a request without credentials is never answered with a 401, so MCP clients that send keys never start an OAuth sign-in by mistake.
+1. **An API key** in the `Authorization: Bearer <key>` or `X-API-Key` header, or the `?apiKey=` query parameter: continues to work with OAuth enabled. Prefer a header where possible — URLs with keys can end up in browser history and logs; the shipped nginx config strips query strings from access logs.
 2. **An access token** (`Authorization: Bearer` with a JWT, which an API key never is): it must be RS256, signed with one of the issuer's keys, issued for this server, not expired, with the `lookups` scope. It is traded for the account's API key at billing, cached for up to a minute and never past the token's expiry. Tokens never contain the key, and the key is never logged.
-3. **An access token that can't be used** (expired, invalid, or no longer accepted by billing because the user disconnected, changed their password or signed out of all devices) gets `401` with `WWW-Authenticate: Bearer error="invalid_token", resource_metadata="…"`, so the app refreshes it or asks the user to connect again. A token without the `lookups` scope gets `403`. **If the account can't run lookups** (inactive, or no active key), tools return an error explaining why instead.
+3. **No credentials**: gets `401` with a `WWW-Authenticate` challenge and path-specific protected-resource metadata URL, which lets Claude discover the authorization server and start sign-in.
+4. **An unusable access token** (expired, invalid, or no longer accepted by billing because the user disconnected, changed their password, or signed out of all devices) gets `401 invalid_token`, so the app refreshes it or asks the user to connect again. A token without the `lookups` scope gets `403`. **If the account can't run lookups** (inactive, or no active key), tools return an error explaining why instead.
+
+For Claude's hosted connector and Anthropic Directory listing, configure the billing OAuth client `claude` with the exact redirect URI `https://claude.ai/api/mcp/auth_callback`, then enter its client ID and secret in the Anthropic developer portal under **Anthropic-held client credentials**. The client secret is supplied to billing through Vault as `billing.oauth.claude.client.secret`; never commit it. The billing server requires PKCE, asks for user consent, issues refresh tokens, and rotates refresh tokens. Detailed setup and change notes are kept with the team documentation, outside this repository.
 
 Apps find where to sign in at `GET /.well-known/oauth-protected-resource` (and `/.well-known/oauth-protected-resource/mcp`, for the `/mcp` URL). A key restricted to listed IPs only works here if this server's address is on its list.
 
