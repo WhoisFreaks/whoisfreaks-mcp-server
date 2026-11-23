@@ -19,6 +19,8 @@ public record OAuthSettings(String issuer, String resource, URI jwksUri, String 
 
     /** The scope an access token needs to run lookups. */
     public static final String LOOKUPS_SCOPE = "lookups";
+    /** The OAuth-only endpoint's path; its own resource identifier and metadata live under this. */
+    public static final String OAUTH_PATH = "/oauth";
     private static final String METADATA_PATH = "/.well-known/oauth-protected-resource";
     private static final String MCP_PATH = "/mcp";
 
@@ -49,12 +51,12 @@ public record OAuthSettings(String issuer, String resource, URI jwksUri, String 
     }
 
     /**
-     * The resource identifiers apps may ask a token for: the server's address, which is where the
-     * endpoint is, and the address plus /mcp, where it also is. An app's metadata lookup finds one or
-     * the other depending on which URL it was given.
+     * The resource identifiers apps may ask a token for: the server's address, the address plus /mcp,
+     * and the address plus /oauth (the OAuth-only endpoint). An app's metadata lookup finds whichever
+     * matches the URL it was given, and a token minted for any of them is accepted.
      */
     public List<String> resources() {
-        return List.of(this.resource, this.resource + MCP_PATH);
+        return List.of(this.resource, this.resource + MCP_PATH, this.resource + OAUTH_PATH);
     }
 
     /** Where each resource's metadata is (RFC 9728: the well-known path, then the resource's own path). */
@@ -62,9 +64,19 @@ public record OAuthSettings(String issuer, String resource, URI jwksUri, String 
         return METADATA_PATH + URI.create(resource).getRawPath();
     }
 
-    /** The full URL of the server address's metadata, which the 401 challenge points apps to. */
+    /** The full URL of a resource's metadata (RFC 9728), which a 401 challenge points apps to. */
+    public String metadataUrl(String resource) {
+        return this.resource + metadataPath(resource);
+    }
+
+    /** The full URL of the server address's metadata. */
     public String metadataUrl() {
-        return this.resource + metadataPath(this.resource);
+        return metadataUrl(this.resource);
+    }
+
+    /** The OAuth-only endpoint's metadata URL, which its 401 challenge points apps to. */
+    public String oauthMetadataUrl() {
+        return metadataUrl(this.resource + OAUTH_PATH);
     }
 
     private static String httpUrl(Function<String, String> env, String name) {
