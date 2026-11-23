@@ -53,6 +53,8 @@ import java.util.Set;
  * Endpoints:
  *   POST /mcp     — MCP JSON-RPC endpoint
  *   POST /        — the same endpoint, so the bare host name works as the server URL
+ *   POST /oauth   — the same endpoint, OAuth only: a request with no credentials gets a 401 sign-in
+ *                   challenge (mounted only when OAUTH_ISSUER is set; for connector directories)
  *   GET  /        — a short description of the server, for someone opening it in a browser
  *   GET  /health  — liveness check, returns {"status":"ok"}
  *
@@ -111,7 +113,7 @@ public class WhoisFreaksHttpServer {
                     // A signed-in request's key comes from billing (OAuthFilter); any other request's from itself.
                     String signedInKey = attribute(request, OAuthFilter.API_KEY_ATTRIBUTE);
                     String problem = attribute(request, OAuthFilter.KEY_PROBLEM_ATTRIBUTE);
-                    String apiKey = signedInKey.isEmpty() && problem.isEmpty() ? extractApiKey(request) : signedInKey;
+                    String apiKey = signedInKey.isEmpty() && problem.isEmpty() ? OAuthFilter.extractApiKey(request) : signedInKey;
                     return McpTransportContext.create(Map.of(API_KEY, apiKey, KEY_PROBLEM, problem));
                 })
                 .build();
@@ -142,16 +144,34 @@ public class WhoisFreaksHttpServer {
 
         FilterHolder mcpFilter = new FilterHolder(new McpFilter(oauth != null));
         mcpFilter.setAsyncSupported(true);
+
         context.addFilter(mcpFilter, MCP_PATH, EnumSet.of(DispatcherType.REQUEST));
         context.addFilter(mcpFilter, ROOT_MAPPING, EnumSet.of(DispatcherType.REQUEST));
 
         if (oauth != null) {
-            // After McpFilter, so its answers get the CORS headers and preflights skip the token check.
-            FilterHolder oauthFilter = new FilterHolder(
-                    new OAuthFilter(new AccessTokenVerifier(oauth), new BillingApiKeys(oauth), oauth));
+            AccessTokenVerifier verifier = new AccessTokenVerifier(oauth);
+            BillingApiKeys apiKeys = new BillingApiKeys(oauth);
+
+            // /mcp and / keep today's behavior: a request with no credentials is handled by the tool
+            // (which explains how to add a key), never challenged, so a user who merely forgot their
+            // key isn't pushed into a sign-in loop. Added after McpFilter so these answers carry its
+            // CORS headers and so preflights skip the token check.
+            FilterHolder oauthFilter = new FilterHolder(new OAuthFilter(verifier, apiKeys, oauth));
             oauthFilter.setAsyncSupported(true);
             context.addFilter(oauthFilter, MCP_PATH, EnumSet.of(DispatcherType.REQUEST));
             context.addFilter(oauthFilter, ROOT_MAPPING, EnumSet.of(DispatcherType.REQUEST));
+
+            // /oauth is the OAuth-only endpoint for connector directories (e.g. Claude's): the same MCP
+            // servlet, filters and tools, but a request with no credentials gets a 401 challenge that
+            // starts sign-in. McpFilter is mapped first (CORS, body checks), then the challenge filter.
+            context.addServlet(mcpHolder, OAuthSettings.OAUTH_PATH);
+            context.addFilter(mcpFilter, OAuthSettings.OAUTH_PATH, EnumSet.of(DispatcherType.REQUEST));
+            FilterHolder oauthChallengeFilter = new FilterHolder(
+                    new OAuthFilter(verifier, apiKeys, oauth.oauthMetadataUrl(), true));
+            oauthChallengeFilter.setAsyncSupported(true);
+            context.addFilter(oauthChallengeFilter, OAuthSettings.OAUTH_PATH, EnumSet.of(DispatcherType.REQUEST));
+
+            // One protected-resource-metadata doc per resource identifier: /, /mcp and /oauth.
             for (String resource : oauth.resources()) {
                 context.addServlet(new ServletHolder(new ProtectedResourceMetadataServlet(oauth, resource)),
                         oauth.metadataPath(resource));
@@ -205,23 +225,6 @@ public class WhoisFreaksHttpServer {
     private static String attribute(HttpServletRequest request, String name) {
         Object value = request.getAttribute(name);
         return value instanceof String text ? text : "";
-    }
-
-    /** Returns the caller's API key from the Authorization header, X-API-Key header, or apiKey query parameter. */
-    static String extractApiKey(HttpServletRequest request) {
-        String auth = request.getHeader("Authorization");
-        if (auth != null && auth.regionMatches(true, 0, "Bearer ", 0, 7) && !auth.substring(7).isBlank()) {
-            return auth.substring(7).trim();
-        }
-        String header = request.getHeader("X-API-Key");
-        if (header != null && !header.isBlank()) {
-            return header.trim();
-        }
-        String query = request.getParameter("apiKey");
-        if (query != null && !query.isBlank()) {
-            return query.trim();
-        }
-        return "";
     }
 
     /**

@@ -14,9 +14,11 @@ import java.io.IOException;
 
 /**
  * Handles the requests that carry an OAuth access token: a bearer value that is a JWT (three
- * dot-separated parts), which an API key never is. Every other request (an API key in any of
- * its forms, or no credentials) passes through untouched to the API-key handling, so clients
- * that send keys see no difference, and none of them ever gets a 401 from here.
+ * dot-separated parts), which an API key never is. A request that sends an API key (in any of its
+ * forms) passes through untouched to the API-key handling, so clients that send keys see no
+ * difference. A request with no credentials also passes through — except on an OAuth-only endpoint
+ * (constructed with {@code challengeUnauthenticated}), where it gets a 401 challenge that starts the
+ * app's sign-in flow.
  *
  * An unusable token gets 401 with a challenge pointing to this server's protected resource
  * metadata, so apps such as ChatGPT refresh it or sign the user in again (403 for a token
@@ -39,11 +41,27 @@ public class OAuthFilter implements Filter {
     private final AccessTokenVerifier verifier;
     private final BillingApiKeys apiKeys;
     private final String metadataUrl;
+    private final boolean challengeUnauthenticated;
 
+    /**
+     * API-key compatible (for /mcp and /): a request with no usable credentials passes through, and
+     * challenges point at the server address's metadata.
+     */
     public OAuthFilter(AccessTokenVerifier verifier, BillingApiKeys apiKeys, OAuthSettings settings) {
+        this(verifier, apiKeys, settings.metadataUrl(), false);
+    }
+
+    /**
+     * For an OAuth-only endpoint (e.g. /oauth, used by connector directories): a request that carries
+     * no credentials at all gets a 401 Bearer challenge pointed at {@code metadataUrl}, which starts
+     * the app's sign-in flow. Requests that do carry a token or an API key are handled as usual.
+     */
+    public OAuthFilter(AccessTokenVerifier verifier, BillingApiKeys apiKeys, String metadataUrl,
+                       boolean challengeUnauthenticated) {
         this.verifier = verifier;
         this.apiKeys = apiKeys;
-        this.metadataUrl = settings.metadataUrl();
+        this.metadataUrl = metadataUrl;
+        this.challengeUnauthenticated = challengeUnauthenticated;
     }
 
     @Override
@@ -53,7 +71,14 @@ public class OAuthFilter implements Filter {
 
         String token = accessToken(request);
         if (token == null) {
-            chain.doFilter(request, response);
+            // No OAuth token. On an OAuth-only endpoint a request with no key is challenged (so the
+            // app signs the user in); everywhere else, and whenever a key is present, it passes
+            // through to the API-key handling untouched.
+            if (this.challengeUnauthenticated && extractApiKey(request).isEmpty()) {
+                unauthenticated(response);
+            } else {
+                chain.doFilter(request, response);
+            }
             return;
         }
 
@@ -105,6 +130,35 @@ public class OAuthFilter implements Filter {
             }
         }
         return token;
+    }
+
+    /**
+     * The caller's WhoisFreaks API key from the request — an Authorization: Bearer value, an X-API-Key
+     * header, or an ?apiKey query parameter — or "" when there is none. The one reader both this filter
+     * (to tell a credential-less request apart) and the HTTP server's context extractor use.
+     */
+    public static String extractApiKey(HttpServletRequest request) {
+        String auth = request.getHeader("Authorization");
+        if (auth != null && auth.regionMatches(true, 0, "Bearer ", 0, 7) && !auth.substring(7).isBlank()) {
+            return auth.substring(7).trim();
+        }
+        String header = request.getHeader("X-API-Key");
+        if (header != null && !header.isBlank()) {
+            return header.trim();
+        }
+        String query = request.getParameter("apiKey");
+        return query != null && !query.isBlank() ? query.trim() : "";
+    }
+
+    /** 401 with a bare Bearer challenge (RFC 6750 §3) for a request that carried no credentials at all. */
+    private void unauthenticated(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setHeader("WWW-Authenticate", "Bearer resource_metadata=\"" + this.metadataUrl
+                + "\", scope=\"" + OAuthSettings.LOOKUPS_SCOPE + '"');
+        ObjectNode body = JSON.createObjectNode();
+        body.put("error", "unauthorized");
+        body.put("error_description", "Sign in to use WhoisFreaks.");
+        write(response, body);
     }
 
     /** 401 or 403 with a Bearer challenge (RFC 6750, RFC 9728). */
