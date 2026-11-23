@@ -30,9 +30,11 @@ class OAuthSettingsTest {
     void readsTheSettingsAndDerivesTheRest() {
         OAuthSettings settings = OAuthSettings.from(COMPLETE::get);
 
-        assertEquals(List.of("https://mcp.example.com", "https://mcp.example.com/mcp"), settings.resources());
+        assertEquals(List.of("https://mcp.example.com", "https://mcp.example.com/mcp", "https://mcp.example.com/oauth"),
+                settings.resources());
         assertEquals("https://mcp.example.com/.well-known/oauth-protected-resource", settings.metadataUrl());
         assertEquals("/.well-known/oauth-protected-resource/mcp", settings.metadataPath("https://mcp.example.com/mcp"));
+        assertEquals("https://mcp.example.com/.well-known/oauth-protected-resource/oauth", settings.oauthMetadataUrl());
         assertEquals("https://auth.example.com/oauth2/jwks", settings.jwksUri().toString());
         assertEquals("https://billing-backend.example.com", settings.billingUrl());
     }
